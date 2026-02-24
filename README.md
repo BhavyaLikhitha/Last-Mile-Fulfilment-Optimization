@@ -5,6 +5,10 @@ An End-to-End Supply Chain, Logistics &amp; Operations Intelligence System
 
 ---
 
+## 🏁 Project Status
+
+🚧 In Development — Phase 1: Architecture & Data Modeling
+
 ## 🔎 Business Context
 
 Modern large-scale fulfillment networks face complex operational challenges:
@@ -228,7 +232,3 @@ Metrics evaluated:
 - Scenario simulation engine  
 
 ---
-
-## 🏁 Project Status
-
-🚧 In Development — Phase 1: Architecture & Data Modeling
