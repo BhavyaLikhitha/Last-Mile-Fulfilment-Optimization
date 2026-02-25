@@ -9,6 +9,22 @@ An End-to-End Supply Chain, Logistics &amp; Operations Intelligence System
 
 🚧 In Development — Phase 1: Architecture & Data Modeling
 
+## Data Model
+
+### Entity Relationship Diagram
+
+[![ERD Diagram](docs/ERD.png)](https://dbdiagram.io/d/699e4d03bd82f5fce2b9a33c)
+
+> Click the diagram to view the interactive version on dbdiagram.io
+
+**20 Tables:** 7 Dimensions + 7 Facts + 6 Marts (dbt)
+
+| Layer | Tables | Volume |
+|-------|--------|--------|
+| Dimensions | dim_product, dim_warehouse, dim_supplier, dim_driver, dim_customer, dim_date, dim_experiments | ~11,800 rows (static) |
+| Facts | fact_orders, fact_order_items, fact_inventory_snapshot, fact_shipments, fact_deliveries, fact_driver_activity, fact_experiment_assignments | ~26,800 rows/day |
+| Marts (dbt) | mart_daily_warehouse_kpis, mart_daily_product_kpis, mart_delivery_performance, mart_allocation_efficiency, mart_cost_optimization, mart_experiment_results | ~534 rows/day |
+
 ## 🔎 Business Context
 
 Modern large-scale fulfillment networks face complex operational challenges:
