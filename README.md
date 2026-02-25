@@ -26,6 +26,11 @@ An End-to-End Supply Chain, Logistics &amp; Operations Intelligence System
 | Facts | fact_orders, fact_order_items, fact_inventory_snapshot, fact_shipments, fact_deliveries, fact_driver_activity, fact_experiment_assignments | ~26,800 rows/day |
 | Marts (dbt) | mart_daily_warehouse_kpis, mart_daily_product_kpis, mart_delivery_performance, mart_allocation_efficiency, mart_cost_optimization, mart_experiment_results | ~534 rows/day |
 
+## backfill
+- Get-Content requirements.txt | ForEach-Object { poetry add $_ }
+- python -m data_simulation.backfill
+
+
 ## 🔎 Business Context
 
 Modern large-scale fulfillment networks face complex operational challenges:

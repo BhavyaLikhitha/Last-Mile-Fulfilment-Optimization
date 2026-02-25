@@ -2,7 +2,7 @@
 .env
 *.pyc
 __pycache__/
-
+.venv/
 # Data
 *.csv
 *.parquet
@@ -15,3 +15,7 @@ output/
 # OS
 .DS_Store
 Thumbs.db
+
+# dbt
+dbt/logs/
+dbt/target/
