@@ -16,6 +16,7 @@ An End-to-End Supply Chain, Logistics &amp; Operations Intelligence System
 [![ERD Diagram](docs/ERD.png)](https://dbdiagram.io/d/699e4d03bd82f5fce2b9a33c)
 
 > Click the diagram to view the interactive version on dbdiagram.io
+`https://dbdiagram.io/d/Last-Mile-Fulfilment-Platform-699e4d03bd82f5fce2b9a33c`
 
 **20 Tables:** 7 Dimensions + 7 Facts + 6 Marts (dbt)
 
