@@ -1,0 +1,13 @@
+fulfillment_platform:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: IKZQFMX-KKC80571
+      user: YOUR_USERNAME
+      password: YOUR_PASSWORD
+      role: ACCOUNTADMIN
+      warehouse: FULFILLMENT_WH
+      database: FULFILLMENT_DB
+      schema: STAGING
+      threads: 4
