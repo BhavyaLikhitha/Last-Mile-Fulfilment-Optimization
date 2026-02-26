@@ -1,0 +1,21 @@
+version: 2
+
+sources:
+  - name: raw
+    database: FULFILLMENT_DB
+    schema: RAW
+    tables:
+      - name: dim_product
+      - name: dim_warehouse
+      - name: dim_supplier
+      - name: dim_driver
+      - name: dim_customer
+      - name: dim_date
+      - name: dim_experiments
+      - name: fact_orders
+      - name: fact_order_items
+      - name: fact_inventory_snapshot
+      - name: fact_shipments
+      - name: fact_deliveries
+      - name: fact_driver_activity
+      - name: fact_experiment_assignments

@@ -1,0 +1,24 @@
+version: 2
+
+models:
+  - name: int_order_enriched
+    description: "Orders enriched with customer segment, warehouse region, item aggregates"
+    columns:
+      - name: order_id
+        tests: [unique, not_null]
+
+  - name: int_delivery_enriched
+    description: "Deliveries enriched with driver info, order priority, warehouse details"
+    columns:
+      - name: delivery_id
+        tests: [unique, not_null]
+
+  - name: int_inventory_enriched
+    description: "Inventory snapshots enriched with product details and warehouse capacity"
+    columns:
+      - name: snapshot_date
+        tests: [not_null]
+      - name: warehouse_id
+        tests: [not_null]
+      - name: product_id
+        tests: [not_null]

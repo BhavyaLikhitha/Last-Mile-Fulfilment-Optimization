@@ -1,0 +1,52 @@
+version: 2
+
+models:
+  - name: mart_daily_warehouse_kpis
+    description: "Daily warehouse-level operational metrics. Pages 1, 5."
+    columns:
+      - name: date
+        tests: [not_null]
+      - name: warehouse_id
+        tests: [not_null]
+
+  - name: mart_daily_product_kpis
+    description: "Daily product-level demand and inventory metrics. Pages 2, 3."
+    columns:
+      - name: date
+        tests: [not_null]
+      - name: product_id
+        tests: [not_null]
+
+  - name: mart_delivery_performance
+    description: "Daily delivery KPIs by warehouse. Pages 1, 4."
+    columns:
+      - name: date
+        tests: [not_null]
+      - name: warehouse_id
+        tests: [not_null]
+
+  - name: mart_allocation_efficiency
+    description: "Warehouse allocation analysis. Page 5."
+    columns:
+      - name: date
+        tests: [not_null]
+      - name: warehouse_id
+        tests: [not_null]
+
+  - name: mart_cost_optimization
+    description: "Cost optimization impact tracking. Pages 1, 5."
+    columns:
+      - name: date
+        tests: [not_null]
+      - name: warehouse_id
+        tests: [not_null]
+
+  - name: mart_experiment_results
+    description: "Experiment metrics per group. Page 6."
+    columns:
+      - name: experiment_id
+        tests: [not_null]
+      - name: group_name
+        tests:
+          - accepted_values:
+              values: ['Control', 'Treatment']

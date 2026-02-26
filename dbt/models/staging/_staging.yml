@@ -1,0 +1,137 @@
+version: 2
+
+models:
+  - name: stg_products
+    description: "Cleaned product dimension with SCD Type 2 from snapshot. Adds profit_margin_pct, price_tier, lead_time_risk."
+    columns:
+      - name: product_id
+        tests: [not_null]
+      - name: category
+        tests: [not_null]
+      - name: cost_price
+        tests: [not_null]
+      - name: selling_price
+        tests: [not_null]
+
+  - name: stg_warehouses
+    description: "Cleaned warehouse dimension. Adds capacity_tier, cost_tier."
+    columns:
+      - name: warehouse_id
+        tests: [unique, not_null]
+
+  - name: stg_suppliers
+    description: "Cleaned supplier dimension with SCD Type 2 from snapshot. Adds supplier_grade, lead_time_category."
+    columns:
+      - name: supplier_id
+        tests: [not_null]
+      - name: reliability_score
+        tests: [not_null]
+
+  - name: stg_drivers
+    description: "Cleaned driver dimension with SCD Type 2 from snapshot. Adds experience_years, capacity_tier, speed_tier."
+    columns:
+      - name: driver_id
+        tests: [not_null]
+      - name: warehouse_id
+        tests: [not_null]
+
+  - name: stg_customers
+    description: "Cleaned customer dimension with SCD Type 2 from snapshot. Adds customer_tenure_days, engagement_tier."
+    columns:
+      - name: customer_id
+        tests: [not_null]
+      - name: customer_segment
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Premium', 'Regular', 'Occasional']
+
+  - name: stg_dates
+    description: "Cleaned date dimension. Adds is_business_day, year_month, week_of_month."
+    columns:
+      - name: date
+        tests: [unique, not_null]
+      - name: season
+        tests:
+          - accepted_values:
+              values: ['Spring', 'Summer', 'Fall', 'Winter']
+
+  - name: stg_experiments
+    description: "Cleaned experiment dimension. Adds experiment_duration_days, is_active."
+    columns:
+      - name: experiment_id
+        tests: [unique, not_null]
+      - name: experiment_type
+        tests:
+          - accepted_values:
+              values: ['inventory_policy', 'routing_algorithm', 'warehouse_allocation']
+
+  - name: stg_orders
+    description: "Cleaned orders. Adds is_cross_region, order_value_tier, is_experiment_order."
+    columns:
+      - name: order_id
+        tests: [unique, not_null]
+      - name: customer_id
+        tests: [not_null]
+      - name: order_priority
+        tests:
+          - accepted_values:
+              values: ['Standard', 'Express', 'Same-Day']
+
+  - name: stg_order_items
+    description: "Cleaned order items. Adds has_discount, discount_pct."
+    columns:
+      - name: order_item_id
+        tests: [unique, not_null]
+      - name: order_id
+        tests: [not_null]
+      - name: product_id
+        tests: [not_null]
+
+  - name: stg_inventory_snapshot
+    description: "Cleaned inventory. Adds net_stock_movement, inventory_health classification."
+    columns:
+      - name: snapshot_date
+        tests: [not_null]
+      - name: warehouse_id
+        tests: [not_null]
+      - name: product_id
+        tests: [not_null]
+
+  - name: stg_shipments
+    description: "Cleaned shipments. Adds shipment_status, cost_per_unit, transit_days."
+    columns:
+      - name: shipment_id
+        tests: [unique, not_null]
+      - name: supplier_id
+        tests: [not_null]
+
+  - name: stg_deliveries
+    description: "Cleaned deliveries. Adds eta_accuracy_pct, delivery_speed_tier, cost_per_km."
+    columns:
+      - name: delivery_id
+        tests: [unique, not_null]
+      - name: order_id
+        tests: [not_null]
+      - name: delivery_status
+        tests:
+          - accepted_values:
+              values: ['Assigned', 'In Transit', 'Delivered', 'Failed']
+
+  - name: stg_driver_activity
+    description: "Cleaned driver activity. Adds avg_distance_per_delivery, deliveries_per_hour, productivity_tier."
+    columns:
+      - name: driver_id
+        tests: [not_null]
+      - name: activity_date
+        tests: [not_null]
+
+  - name: stg_experiment_assignments
+    description: "Cleaned experiment assignments."
+    columns:
+      - name: assignment_id
+        tests: [unique, not_null]
+      - name: group_name
+        tests:
+          - accepted_values:
+              values: ['Control', 'Treatment']
