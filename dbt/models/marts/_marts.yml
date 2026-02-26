@@ -5,48 +5,171 @@ models:
     description: "Daily warehouse-level operational metrics. Pages 1, 5."
     columns:
       - name: date
-        tests: [not_null]
-      - name: warehouse_id
-        tests: [not_null]
+        tests:
+          - not_null:
+              config: {severity: error, tags: ['marts']}
 
+      - name: warehouse_id
+        tests:
+          - not_null:
+              config: {severity: error, tags: ['marts']}
+          - relationships:
+              to: ref('stg_warehouses')
+              field: warehouse_id
+              config: {severity: error, tags: ['marts','fk']}
+
+      - name: service_level_pct
+        tests:
+          - between_values:
+              column_name: service_level_pct
+              min_value: 0
+              max_value: 100
+              config: {severity: error, tags: ['marts','bounds']}
+
+      - name: capacity_utilization_pct
+        description: "Warehouse capacity utilization. Can exceed 100% under operational stress."
+        tests:
+          - between_values:
+              column_name: capacity_utilization_pct
+              min_value: 0
+              max_value: 500
+              config:
+                severity: error
+                tags: ['marts','capacity_bounds']
+        
   - name: mart_daily_product_kpis
     description: "Daily product-level demand and inventory metrics. Pages 2, 3."
     columns:
       - name: date
-        tests: [not_null]
+        tests:
+          - not_null:
+              config: {severity: error}
+
       - name: product_id
-        tests: [not_null]
+        tests:
+          - not_null:
+              config: {severity: error}
+          - relationships:
+              to: ref('stg_products')
+              field: product_id
+              config: {severity: error, tags: ['marts','fk']}
+
+      - name: inventory_turnover
+        tests:
+          - positive_value:
+              column_name: inventory_turnover
+              config: {severity: warn, tags: ['marts','sanity']}
 
   - name: mart_delivery_performance
     description: "Daily delivery KPIs by warehouse. Pages 1, 4."
     columns:
       - name: date
-        tests: [not_null]
+        tests:
+          - not_null
+
       - name: warehouse_id
-        tests: [not_null]
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_warehouses')
+              field: warehouse_id
+
+      - name: on_time_pct
+        tests:
+          - between_values:
+              column_name: on_time_pct
+              min_value: 0
+              max_value: 100
+
+      - name: sla_breach_pct
+        tests:
+          - between_values:
+              column_name: sla_breach_pct
+              min_value: 0
+              max_value: 100
+
+      - name: express_order_pct
+        tests:
+          - between_values:
+              column_name: express_order_pct
+              min_value: 0
+              max_value: 100
 
   - name: mart_allocation_efficiency
     description: "Warehouse allocation analysis. Page 5."
     columns:
       - name: date
-        tests: [not_null]
+        tests:
+          - not_null
+
       - name: warehouse_id
-        tests: [not_null]
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_warehouses')
+              field: warehouse_id
+
+      - name: nearest_assignment_rate
+        tests:
+          - between_values:
+              column_name: nearest_assignment_rate
+              min_value: 0
+              max_value: 100
+              config: {severity: error, tags: ['allocation','bounds']}
+
+      - name: cross_region_pct
+        tests:
+          - between_values:
+              column_name: cross_region_pct
+              min_value: 0
+              max_value: 100
 
   - name: mart_cost_optimization
     description: "Cost optimization impact tracking. Pages 1, 5."
     columns:
       - name: date
-        tests: [not_null]
+        tests:
+          - not_null
+
       - name: warehouse_id
-        tests: [not_null]
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_warehouses')
+              field: warehouse_id
+
+      - name: savings_pct
+        tests:
+          - between_values:
+              column_name: savings_pct
+              min_value: 0
+              max_value: 100
+
+      - name: allocation_efficiency_pct
+        tests:
+          - between_values:
+              column_name: allocation_efficiency_pct
+              min_value: 0
+              max_value: 100
 
   - name: mart_experiment_results
     description: "Experiment metrics per group. Page 6."
     columns:
       - name: experiment_id
-        tests: [not_null]
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_experiments')
+              field: experiment_id
+
       - name: group_name
         tests:
           - accepted_values:
               values: ['Control', 'Treatment']
+
+      - name: service_level_pct
+        tests:
+          - between_values:
+              column_name: service_level_pct
+              min_value: 0
+              max_value: 100

@@ -5,20 +5,61 @@ models:
     description: "Orders enriched with customer segment, warehouse region, item aggregates"
     columns:
       - name: order_id
-        tests: [unique, not_null]
+        tests:
+          - unique:
+              config: {severity: error, tags: ['intermediate','pk']}
+          - not_null:
+              config: {severity: error, tags: ['intermediate','pk']}
+
+      - name: customer_id
+        tests:
+          - relationships:
+              to: ref('stg_customers')
+              field: customer_id
+              config: {severity: error, tags: ['intermediate','fk']}
+
+      - name: assigned_warehouse_id
+        tests:
+          - relationships:
+              to: ref('stg_warehouses')
+              field: warehouse_id
+              config: {severity: error, tags: ['intermediate','fk']}
 
   - name: int_delivery_enriched
     description: "Deliveries enriched with driver info, order priority, warehouse details"
     columns:
       - name: delivery_id
-        tests: [unique, not_null]
+        tests:
+          - unique:
+              config: {severity: error, tags: ['intermediate','pk']}
+          - not_null:
+              config: {severity: error, tags: ['intermediate','pk']}
+
+      - name: order_id
+        tests:
+          - relationships:
+              to: ref('stg_orders')
+              field: order_id
+              config: {severity: error, tags: ['intermediate','fk']}
 
   - name: int_inventory_enriched
     description: "Inventory snapshots enriched with product details and warehouse capacity"
     columns:
       - name: snapshot_date
-        tests: [not_null]
+        tests:
+          - not_null:
+              config: {severity: error, tags: ['intermediate']}
+
       - name: warehouse_id
-        tests: [not_null]
+        tests:
+          - relationships:
+              to: ref('stg_warehouses')
+              field: warehouse_id
+              config: {severity: error, tags: ['intermediate','fk']}
+
       - name: product_id
-        tests: [not_null]
+        tests:
+          - relationships:
+              to: ref('stg_products')
+              field: product_id
+              config: {severity: error, tags: ['intermediate','fk']}
