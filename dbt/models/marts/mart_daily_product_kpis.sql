@@ -3,10 +3,20 @@
     Source: Intermediate enriched models
     Pages: 2 (Inventory & Supply Chain), 3 (Demand Forecasting)
     Grain: One row per product per day
+    Incremental: merge on [date, product_id]
 */
+
+{{ config(
+    materialized='incremental',
+    unique_key=['date', 'product_id'],
+    incremental_strategy='merge'
+) }}
 
 with inventory as (
     select * from {{ ref('int_inventory_enriched') }}
+    {% if is_incremental() %}
+    where snapshot_date > (select max(date) from {{ this }})
+    {% endif %}
 ),
 
 daily_inventory as (
@@ -35,6 +45,9 @@ daily_revenue as (
     from {{ ref('stg_order_items') }} oi
     join {{ ref('stg_orders') }} o on oi.order_id = o.order_id
     where o.order_status != 'Cancelled'
+    {% if is_incremental() %}
+    and o.order_date > (select max(date) from {{ this }})
+    {% endif %}
     group by 1, 2
 ),
 
@@ -71,3 +84,8 @@ select
 from daily_inventory i
 left join daily_revenue r on i.date = r.date and i.product_id = r.product_id
 left join demand_volatility v on i.date = v.date and i.product_id = v.product_id
+
+{% if is_incremental() %}
+where i.date > (select max(date) from {{ this }})
+   or (i.date = (select max(date) from {{ this }}) and i.product_id not in (select product_id from {{ this }} where date = (select max(date) from {{ this }})))
+{% endif %}

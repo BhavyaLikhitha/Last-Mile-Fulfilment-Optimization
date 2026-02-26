@@ -36,9 +36,13 @@ transformed as (
         end as engagement_tier,
 
         -- SCD Type 2 metadata
-        dbt_valid_from,
+        {# dbt_valid_from,
         dbt_valid_to,
-        case when dbt_valid_to is null then true else false end as is_current
+        case when dbt_valid_to is null then true else false end as is_current #}
+
+        dbt_valid_from as valid_from,
+coalesce(dbt_valid_to, '9999-12-31'::timestamp) as valid_to,
+case when dbt_valid_to is null then true else false end as is_current
 
     from snapshot
     where latitude between 24.0 and 50.0

@@ -3,8 +3,13 @@
     Source: Intermediate + staging models
     Page: 6 (Experimentation & A/B Testing)
     Grain: One row per experiment per group (Control/Treatment)
+    Materialization: TABLE (full refresh) — needs full dataset for accurate control vs treatment comparison
     Note: p_value, confidence_intervals, is_significant filled by Python experimentation engine
 */
+
+{{ config(
+    materialized='table'
+) }}
 
 with assignments as (
     select * from {{ ref('stg_experiment_assignments') }}

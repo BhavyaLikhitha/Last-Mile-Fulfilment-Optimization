@@ -3,22 +3,41 @@
     Source: Intermediate enriched models
     Pages: 1 (Executive Overview), 5 (Warehouse Allocation)
     Grain: One row per warehouse per day
+    Incremental: merge on [date, warehouse_id]
 */
+
+{{ config(
+    materialized='incremental',
+    unique_key=['date', 'warehouse_id'],
+    incremental_strategy='merge'
+) }}
 
 with orders as (
     select * from {{ ref('int_order_enriched') }}
+    {% if is_incremental() %}
+    where order_date > (select max(date) from {{ this }})
+    {% endif %}
 ),
 
 deliveries as (
     select * from {{ ref('int_delivery_enriched') }}
+    {% if is_incremental() %}
+    where delivery_date > (select max(date) from {{ this }})
+    {% endif %}
 ),
 
 inventory as (
     select * from {{ ref('int_inventory_enriched') }}
+    {% if is_incremental() %}
+    where snapshot_date > (select max(date) from {{ this }})
+    {% endif %}
 ),
 
 shipments as (
     select * from {{ ref('stg_shipments') }}
+    {% if is_incremental() %}
+    where shipment_date > (select max(date) from {{ this }})
+    {% endif %}
 ),
 
 warehouses as (

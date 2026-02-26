@@ -3,14 +3,27 @@
     Source: Intermediate enriched models
     Pages: 1 (Executive Overview), 4 (Last-Mile Delivery)
     Grain: One row per warehouse per day
+    Incremental: merge on [date, warehouse_id]
 */
+
+{{ config(
+    materialized='incremental',
+    unique_key=['date', 'warehouse_id'],
+    incremental_strategy='merge'
+) }}
 
 with deliveries as (
     select * from {{ ref('int_delivery_enriched') }}
+    {% if is_incremental() %}
+    where delivery_date > (select max(date) from {{ this }})
+    {% endif %}
 ),
 
 driver_activity as (
     select * from {{ ref('stg_driver_activity') }}
+    {% if is_incremental() %}
+    where activity_date > (select max(date) from {{ this }})
+    {% endif %}
 ),
 
 daily_deliveries as (
