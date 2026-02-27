@@ -1,0 +1,4 @@
+Model,AUC-ROC,Precision,Recall,F1-Score
+Logistic Regression,0.9986,0.13,0.9988,0.2301
+XGBoost,0.9987,0.245,0.9497,0.3895
+LightGBM,0.9821,0.1622,0.9832,0.2784
