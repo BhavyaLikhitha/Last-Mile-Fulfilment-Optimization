@@ -1,0 +1,34 @@
+{
+  "model_name": "eta_best",
+  "saved_at": "2026-02-26T23:41:43.108714",
+  "metrics": {
+    "MAPE": 16.01,
+    "RMSE": 353.19,
+    "MAE": 139.94,
+    "R2": 0.9619
+  },
+  "features": [
+    "distance_km",
+    "distance_squared",
+    "distance_log",
+    "vehicle_type_encoded",
+    "driver_hist_speed_kmh",
+    "eta_speed_estimate",
+    "driver_experience_years",
+    "driver_avg_delivery",
+    "simple_eta",
+    "pickup_wait",
+    "warehouse_avg_delivery",
+    "hour",
+    "is_peak_hour",
+    "is_morning",
+    "is_afternoon",
+    "is_evening",
+    "day_of_week_num",
+    "month",
+    "is_holiday",
+    "is_weekend",
+    "season_encoded",
+    "priority_encoded"
+  ]
+}
