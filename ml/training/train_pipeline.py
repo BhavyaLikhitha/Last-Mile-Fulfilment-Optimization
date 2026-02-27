@@ -787,6 +787,10 @@ def run_full_pipeline(phases: list = None, full_refresh: bool = False):
     
     print(f"\n  Results saved to ml/results/")
     print(f"  Next: Write predictions back to Snowflake mart tables")
+
+    # Save best models
+    from ml.training.save_best_models import save_best_from_results
+    save_best_from_results(results)
     
     return results
 
