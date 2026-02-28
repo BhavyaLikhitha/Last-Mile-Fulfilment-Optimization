@@ -1,0 +1,15 @@
+experiment_id,segment_type,segment_value,n_control,n_treatment,mean_control,mean_treatment,mean_difference,pct_change,p_value,is_significant
+EXP-010,customer_segment,Occasional,19881,20184,539.2179,512.0198,-27.198,-5.04,0.006866,True
+EXP-010,customer_segment,Regular,36895,37063,539.2639,511.6505,-27.6134,-5.12,0.000199,True
+EXP-010,customer_segment,Premium,9996,10002,530.6108,509.5743,-21.0366,-3.96,0.139313,False
+EXP-010,order_priority,Standard,39912,40107,534.4869,511.4351,-23.0518,-4.31,0.00119,True
+EXP-010,order_priority,Same-Day,6703,6853,548.4086,498.7893,-49.6192,-9.05,0.004123,True
+EXP-010,order_priority,Express,20157,20289,541.3451,515.7642,-25.5809,-4.73,0.011109,True
+EXP-010,region,West,8510,8415,624.8131,599.9318,-24.8814,-3.98,0.163279,False
+EXP-010,region,Southeast,8426,8693,603.1266,567.3368,-35.7898,-5.93,0.041323,True
+EXP-010,region,Mid-Atlantic,8668,8687,439.7701,435.6862,-4.0839,-0.93,0.753349,False
+EXP-010,region,Northeast,8417,8302,564.6663,534.4778,-30.1885,-5.35,0.069837,False
+EXP-010,region,South,8018,8027,458.9549,431.1134,-27.8416,-6.07,0.018598,True
+EXP-010,region,Mountain,8076,8273,472.6387,440.1533,-32.4853,-6.87,0.008856,True
+EXP-010,region,Northwest,8192,8289,710.3769,665.4043,-44.9726,-6.33,0.027706,True
+EXP-010,region,Midwest,8465,8563,430.0236,417.4792,-12.5444,-2.92,0.286104,False
