@@ -60,6 +60,14 @@ models:
               column_name: inventory_turnover
               config: {severity: warn, tags: ['marts','sanity']}
 
+      - name: stockout_risk_score
+        description: >
+          ML stockout risk probability (0.0–1.0) for this product on this date.
+          Represents the MAX risk score across all warehouses holding this product.
+          Written by the stockout risk model (predict_and_writeback.py).
+          NULL until ML pipeline has been run.
+
+
   - name: mart_delivery_performance
     description: "Daily delivery KPIs by warehouse. Pages 1, 4."
     columns:
@@ -94,6 +102,18 @@ models:
               column_name: express_order_pct
               min_value: 0
               max_value: 100
+
+      - name: predicted_eta
+        description: >
+          ML-predicted average delivery time in minutes for this warehouse on this date.
+          Aggregated as AVG of per-delivery predictions from the ETA prediction model.
+          Written by predict_and_writeback.py. NULL until ML pipeline has been run.
+
+      - name: eta_error
+        description: >
+          Average prediction error in minutes (actual_delivery_minutes - predicted_eta).
+          Positive = model underestimated, negative = model overestimated.
+          Written by predict_and_writeback.py. NULL until ML pipeline has been run.
 
   - name: mart_allocation_efficiency
     description: "Warehouse allocation analysis. Page 5."
