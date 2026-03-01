@@ -2559,16 +2559,21 @@ def predict_future_demand(horizon_days: int = 180):
         print(f"    {h:>3}d bucket: {n:>8,} rows")
 
     # ── Write to Snowflake ──
-    # Delete existing future rows first to allow clean re-runs
-    cur.execute("USE SCHEMA MARTS")
-    cur.execute("DELETE FROM MART_DAILY_PRODUCT_KPIS WHERE IS_FORECAST = TRUE")
-    deleted = cur.rowcount
-    print(f"\n  Cleared {deleted:,} existing future rows")
+    # MERGE on (date, product_id, forecast_generated_date)
+    # This preserves previous forecast vintages and only updates/inserts
+    # rows for today's forecast run. Re-running on the same day is idempotent.
 
-    # price_tier is dropped by build_demand_features (it strips mart cols before merging products)
-    # Re-attach it from the products dataframe
+    # price_tier is dropped by build_demand_features — re-attach from products
     price_tier_map = products[['product_id', 'price_tier']].drop_duplicates()
     df_future = df_future.merge(price_tier_map, on='product_id', how='left')
+
+    # forecast_generated_date = today — identifies this forecast vintage
+    # Allows multiple vintages to coexist in the mart for comparison in Power BI
+    from datetime import date as date_cls
+    forecast_generated_date = date_cls.today().strftime('%Y-%m-%d')
+
+    cur.execute("USE SCHEMA MARTS")
+    print(f"\n  Writing forecast vintage: {forecast_generated_date}")
 
     # Prepare writeback dataframe — only columns that exist in the mart
     writeback = df_future[[
@@ -2576,17 +2581,18 @@ def predict_future_demand(horizon_days: int = 180):
         'demand_forecast', 'forecast_horizon', 'is_forecast'
     ]].copy()
     writeback['date'] = writeback['date'].dt.strftime('%Y-%m-%d')
-    writeback['forecast_error']        = None
-    writeback['total_units_sold']      = None
-    writeback['total_revenue']         = None
-    writeback['stockout_count']        = None
-    writeback['avg_closing_stock']     = None
-    writeback['inventory_turnover']    = None
-    writeback['avg_days_of_supply']    = None
-    writeback['total_holding_cost']    = None
-    writeback['total_inventory_value'] = None
-    writeback['demand_volatility']     = None
-    writeback['stockout_risk_score']   = None
+    writeback['forecast_error']          = None
+    writeback['total_units_sold']        = None
+    writeback['total_revenue']           = None
+    writeback['stockout_count']          = None
+    writeback['avg_closing_stock']       = None
+    writeback['inventory_turnover']      = None
+    writeback['avg_days_of_supply']      = None
+    writeback['total_holding_cost']      = None
+    writeback['total_inventory_value']   = None
+    writeback['demand_volatility']       = None
+    writeback['stockout_risk_score']     = None
+    writeback['forecast_generated_date'] = forecast_generated_date
 
     # Reorder to match mart column order
     writeback = writeback[[
@@ -2595,7 +2601,8 @@ def predict_future_demand(horizon_days: int = 180):
         'avg_closing_stock', 'inventory_turnover', 'avg_days_of_supply',
         'total_holding_cost', 'total_inventory_value',
         'demand_forecast', 'forecast_error', 'demand_volatility',
-        'stockout_risk_score', 'is_forecast', 'forecast_horizon'
+        'stockout_risk_score', 'is_forecast', 'forecast_horizon',
+        'forecast_generated_date'
     ]]
 
     temp_path = 'ml/results/_temp_future_demand.csv'
@@ -2605,24 +2612,25 @@ def predict_future_demand(horizon_days: int = 180):
 
     cur.execute("""
         CREATE OR REPLACE TEMPORARY TABLE _temp_future_demand (
-            date                  DATE,
-            product_id            VARCHAR(20),
-            category              VARCHAR(50),
-            price_tier            VARCHAR(20),
-            total_units_sold      NUMBER(38,0),
-            total_revenue         NUMBER(22,2),
-            stockout_count        NUMBER(18,0),
-            avg_closing_stock     NUMBER(38,2),
-            inventory_turnover    NUMBER(38,2),
-            avg_days_of_supply    NUMBER(24,2),
-            total_holding_cost    NUMBER(22,2),
-            total_inventory_value NUMBER(24,2),
-            demand_forecast       NUMBER(8,2),
-            forecast_error        NUMBER(8,2),
-            demand_volatility     FLOAT,
-            stockout_risk_score   NUMBER(6,4),
-            is_forecast           BOOLEAN,
-            forecast_horizon      INTEGER
+            date                    DATE,
+            product_id              VARCHAR(20),
+            category                VARCHAR(50),
+            price_tier              VARCHAR(20),
+            total_units_sold        NUMBER(38,0),
+            total_revenue           NUMBER(22,2),
+            stockout_count          NUMBER(18,0),
+            avg_closing_stock       NUMBER(38,2),
+            inventory_turnover      NUMBER(38,2),
+            avg_days_of_supply      NUMBER(24,2),
+            total_holding_cost      NUMBER(22,2),
+            total_inventory_value   NUMBER(24,2),
+            demand_forecast         NUMBER(8,2),
+            forecast_error          NUMBER(8,2),
+            demand_volatility       FLOAT,
+            stockout_risk_score     NUMBER(6,4),
+            is_forecast             BOOLEAN,
+            forecast_horizon        INTEGER,
+            forecast_generated_date DATE
         )
     """)
     cur.execute(f"PUT file://{abs_path} @%_temp_future_demand AUTO_COMPRESS=TRUE OVERWRITE=TRUE")
@@ -2636,7 +2644,35 @@ def predict_future_demand(horizon_days: int = 180):
             EMPTY_FIELD_AS_NULL=TRUE
         )
     """)
-    cur.execute("INSERT INTO MART_DAILY_PRODUCT_KPIS SELECT * FROM _temp_future_demand")
+    # MERGE on 3-column key — preserves previous vintages, idempotent on same-day re-runs
+    cur.execute("""
+        MERGE INTO MART_DAILY_PRODUCT_KPIS t
+        USING _temp_future_demand s
+        ON  t.DATE                    = s.DATE
+        AND t.PRODUCT_ID              = s.PRODUCT_ID
+        AND t.FORECAST_GENERATED_DATE = s.FORECAST_GENERATED_DATE
+        WHEN MATCHED THEN UPDATE SET
+            t.DEMAND_FORECAST         = s.DEMAND_FORECAST,
+            t.FORECAST_HORIZON        = s.FORECAST_HORIZON,
+            t.IS_FORECAST             = s.IS_FORECAST
+        WHEN NOT MATCHED THEN INSERT (
+            DATE, PRODUCT_ID, CATEGORY, PRICE_TIER,
+            TOTAL_UNITS_SOLD, TOTAL_REVENUE, STOCKOUT_COUNT,
+            AVG_CLOSING_STOCK, INVENTORY_TURNOVER, AVG_DAYS_OF_SUPPLY,
+            TOTAL_HOLDING_COST, TOTAL_INVENTORY_VALUE,
+            DEMAND_FORECAST, FORECAST_ERROR, DEMAND_VOLATILITY,
+            STOCKOUT_RISK_SCORE, IS_FORECAST, FORECAST_HORIZON,
+            FORECAST_GENERATED_DATE
+        ) VALUES (
+            s.DATE, s.PRODUCT_ID, s.CATEGORY, s.PRICE_TIER,
+            s.TOTAL_UNITS_SOLD, s.TOTAL_REVENUE, s.STOCKOUT_COUNT,
+            s.AVG_CLOSING_STOCK, s.INVENTORY_TURNOVER, s.AVG_DAYS_OF_SUPPLY,
+            s.TOTAL_HOLDING_COST, s.TOTAL_INVENTORY_VALUE,
+            s.DEMAND_FORECAST, s.FORECAST_ERROR, s.DEMAND_VOLATILITY,
+            s.STOCKOUT_RISK_SCORE, s.IS_FORECAST, s.FORECAST_HORIZON,
+            s.FORECAST_GENERATED_DATE
+        )
+    """)
     rows_inserted = cur.rowcount
     conn.commit()
 
@@ -2648,7 +2684,7 @@ def predict_future_demand(horizon_days: int = 180):
     cur.close()
     conn.close()
 
-    print(f"\n  ✓ Inserted {rows_inserted:,} future forecast rows")
+    print(f"\n  ✓ Merged {rows_inserted:,} future forecast rows (vintage: {forecast_generated_date})")
     print(f"  ✓ Completed in {time.time() - start:.0f}s")
 
 
