@@ -66,7 +66,13 @@ def fast_query(conn, sql: str) -> pd.DataFrame:
             df = pd.DataFrame(cur.fetchall(), columns=[d[0] for d in cur.description])
     finally:
         cur.close()
+    # df.columns = [c.lower() for c in df.columns]
+    # return df
     df.columns = [c.lower() for c in df.columns]
+    # Convert Snowflake Decimal types to native Python numeric types
+    for col in df.columns:
+        if df[col].dtype == object:
+            df[col] = pd.to_numeric(df[col], errors='ignore')
     return df
 
 
@@ -109,6 +115,7 @@ def run_cost_optimization(conn, cur):
     print("\n  Loading mart_daily_warehouse_kpis...")
     warehouse_kpis = fast_query(conn, "SELECT * FROM MARTS.MART_DAILY_WAREHOUSE_KPIS")
     print(f"  Loaded {len(warehouse_kpis):,} rows")
+    warehouse_kpis = warehouse_kpis.apply(pd.to_numeric, errors='ignore')
 
     # Compute baseline costs from mart data
     print("  Computing baseline costs...")
@@ -119,13 +126,27 @@ def run_cost_optimization(conn, cur):
     df = compute_optimized_costs(df)
 
     # Load allocation efficiency from orders
+    # print("  Computing allocation efficiency...")
+    # orders = fast_query(conn, """
+    #     SELECT order_id, order_date, assigned_warehouse_id, nearest_warehouse_id
+    #     FROM RAW.FACT_ORDERS
+    #     WHERE order_status != 'Cancelled'
+    # """)
+    # alloc_eff = compute_allocation_efficiency(orders)
+
+    # Compute allocation efficiency in Snowflake (avoids pulling 7M+ rows into Python)
     print("  Computing allocation efficiency...")
-    orders = fast_query(conn, """
-        SELECT order_id, order_date, assigned_warehouse_id, nearest_warehouse_id
+    # print("  Computing allocation efficiency...")
+    alloc_eff = fast_query(conn, """
+        SELECT
+            order_date AS date,
+            assigned_warehouse_id AS warehouse_id,
+            ROUND(SUM(CASE WHEN assigned_warehouse_id = nearest_warehouse_id THEN 1 ELSE 0 END)
+                  * 100.0 / NULLIF(COUNT(*), 0), 2) AS allocation_efficiency_pct
         FROM RAW.FACT_ORDERS
         WHERE order_status != 'Cancelled'
+        GROUP BY order_date, assigned_warehouse_id
     """)
-    alloc_eff = compute_allocation_efficiency(orders)
 
     # Merge allocation efficiency into cost df
     df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
