@@ -128,8 +128,8 @@ def build_eta_features(deliveries: pd.DataFrame, dates: pd.DataFrame) -> pd.Data
     }).fillna(0)
     
     # Boolean to int
-    df['is_holiday'] = df['is_holiday'].astype(int)
-    df['is_weekend'] = df['is_weekend'].astype(int)
+    df['is_holiday'] = df['is_holiday'].fillna(0).astype(int)
+    df['is_weekend'] = df['is_weekend'].fillna(0).astype(int)
     
     # Drop NaN
     df = df.dropna(subset=['actual_delivery_minutes', 'distance_km'])

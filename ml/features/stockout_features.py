@@ -115,13 +115,13 @@ def build_stockout_features(inventory: pd.DataFrame, dates: pd.DataFrame, produc
     
     df['category_encoded'] = pd.Categorical(df['category']).codes
     
-    df['is_holiday'] = df['is_holiday'].astype(int)
-    df['is_weekend'] = df['is_weekend'].astype(int)
+    df['is_holiday'] = df['is_holiday'].fillna(0).astype(int)
+    df['is_weekend'] = df['is_weekend'].fillna(0).astype(int)
     
     # ── Cast boolean flags to int ──
     for col in ['stockout_flag', 'below_safety_stock_flag', 'reorder_triggered_flag']:
         if col in df.columns:
-            df[col] = df[col].astype(int)
+            df[col] = df[col].fillna(0).astype(int)
     
     # ── Drop rows with NaN from lags ──
     df = df.dropna(subset=['closing_stock_lag_7d', 'will_stockout_3d'])

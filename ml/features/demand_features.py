@@ -109,17 +109,25 @@ def build_demand_features(product_kpis: pd.DataFrame, dates: pd.DataFrame, produ
     df['profit_margin'] = df['selling_price'] - df['cost_price']
     
     # ── Encode Categoricals ──
+    # df['season_encoded'] = df['season'].map({
+    #     'Winter': 0, 'Spring': 1, 'Summer': 2, 'Fall': 3
+    # })
+
     df['season_encoded'] = df['season'].map({
         'Winter': 0, 'Spring': 1, 'Summer': 2, 'Fall': 3
-    })
+    }).fillna(0).astype(int)
     
     # Category encoding (label encode)
     df['category_encoded'] = pd.Categorical(df['category']).codes
     
     # Boolean to int
-    df['is_holiday'] = df['is_holiday'].astype(int)
-    df['is_weekend'] = df['is_weekend'].astype(int)
-    df['is_perishable'] = df['is_perishable'].astype(int)
+    # df['is_holiday'] = df['is_holiday'].astype(int)
+    # df['is_weekend'] = df['is_weekend'].astype(int)
+    # df['is_perishable'] = df['is_perishable'].astype(int)
+
+    df['is_holiday'] = df['is_holiday'].fillna(0).astype(int)
+    df['is_weekend'] = df['is_weekend'].fillna(0).astype(int)
+    df['is_perishable'] = df['is_perishable'].fillna(0).astype(int)
     
     # ── Drop rows with NaN from lag features (first 28 days per product) ──
     df = df.dropna(subset=['demand_lag_28d'])
