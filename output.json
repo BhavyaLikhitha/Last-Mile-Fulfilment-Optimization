@@ -1,0 +1,1 @@
+{"statusCode": 200, "mode": "daily", "start_date": "2026-03-04", "end_date": "2026-03-04", "total_rows": 21548, "totals": {"orders": 3665, "items": 8834, "inventory": 4000, "shipments": 203, "deliveries": 3474, "drivers": 251, "assignments": 1121}, "duration_s": 6.5}
