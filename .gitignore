@@ -7,11 +7,11 @@ __pycache__/
 *.parquet
 output/
 output_extension/
-
 # IDE
 .vscode/
 .idea/
-
+airflow/logs/
+airflow/plugins/
 # OS
 .DS_Store
 Thumbs.db
