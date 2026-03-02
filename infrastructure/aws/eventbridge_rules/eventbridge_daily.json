@@ -1,0 +1,26 @@
+{
+    "RuleName": "fulfillment-daily",
+    "Description": "Triggers fulfillment data generator Lambda every day at 2am UTC",
+    "ScheduleExpression": "cron(0 2 * * ? *)",
+    "State": "ENABLED",
+    "Target": {
+        "Id": "1",
+        "FunctionName": "fulfillment-data-generator",
+        "Input": {
+            "mode": "daily"
+        }
+    },
+    "Notes": {
+        "Purpose": "Daily incremental data generation for testing and development",
+        "WhenToEnable": "During testing phase — generates 1 day of data per run",
+        "WhenToDisable": "Switch to weekly rule for production",
+        "UTCTime": "2:00 AM UTC = 10:00 PM EST / 9:00 PM CST",
+        "ExpectedDuration": "~2-3 minutes per run",
+        "DataGenerated": "~27,000 rows across 7 fact tables for 1 day"
+    },
+    "Commands": {
+        "enable": "python -m infrastructure.aws.deploy_lambda --mode daily",
+        "disable": "python -m infrastructure.aws.deploy_lambda --mode disable",
+        "manual_trigger": "python -m infrastructure.aws.deploy_lambda --trigger-only --trigger"
+    }
+}

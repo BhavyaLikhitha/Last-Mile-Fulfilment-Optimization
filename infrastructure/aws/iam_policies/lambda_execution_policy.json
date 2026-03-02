@@ -1,0 +1,48 @@
+{
+    "PolicyName": "fulfillment-lambda-execution-policy",
+    "Description": "Execution policy for fulfillment data generator Lambda function",
+    "PolicyDocument": {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Sid": "CloudWatchLogs",
+                "Effect": "Allow",
+                "Action": [
+                    "logs:CreateLogGroup",
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                ],
+                "Resource": "arn:aws:logs:*:*:*"
+            },
+            {
+                "Sid": "S3Access",
+                "Effect": "Allow",
+                "Action": [
+                    "s3:GetObject",
+                    "s3:PutObject",
+                    "s3:DeleteObject",
+                    "s3:ListBucket",
+                    "s3:ListBucketMultipartUploads",
+                    "s3:AbortMultipartUpload"
+                ],
+                "Resource": [
+                    "arn:aws:s3:::last-mile-fulfillment-platform",
+                    "arn:aws:s3:::last-mile-fulfillment-platform/*"
+                ]
+            }
+        ]
+    },
+    "TrustPolicy": {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Principal": {
+                    "Service": "lambda.amazonaws.com"
+                },
+                "Action": "sts:AssumeRole"
+            }
+        ]
+    },
+    "Notes": "This policy is automatically created by deploy_lambda.py. It grants the Lambda function permission to write CloudWatch logs and read/write to the fulfillment S3 bucket."
+}

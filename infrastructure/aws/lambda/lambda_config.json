@@ -1,0 +1,57 @@
+{
+    "FunctionName": "fulfillment-data-generator",
+    "Runtime": "python3.12",
+    "Handler": "lambda_handler.lambda_handler",
+    "Timeout": 900,
+    "MemorySize": 3008,
+    "Description": "Generates incremental fulfillment platform data and uploads to S3",
+    "Environment": {
+        "S3_BUCKET_NAME": "last-mile-fulfillment-platform",
+        "AWS_DEFAULT_REGION": "us-east-2"
+    },
+    "Layers": [],
+    "DeploymentPackage": {
+        "Includes": [
+            "lambda_handler.py",
+            "config/",
+            "data_simulation/"
+        ],
+        "Excludes": [
+            "output/",
+            "output_extension/",
+            "dbt/",
+            "ml/",
+            "optimization/",
+            "experimentation/",
+            "airflow/",
+            "infrastructure/",
+            "__pycache__/",
+            "*.pyc",
+            ".env"
+        ]
+    },
+    "EventPayloadExamples": {
+        "daily": {"mode": "daily"},
+        "weekly": {"mode": "weekly"},
+        "manual_3_days": {"mode": "manual", "days": 3},
+        "backfill_range": {
+            "mode": "backfill",
+            "start_date": "2026-03-01",
+            "end_date": "2026-03-07"
+        }
+    },
+    "S3StateFile": "s3://last-mile-fulfillment-platform/state/latest_state.json",
+    "Notes": {
+        "WhyTimeout900": "Lambda max is 15 minutes. Weekly mode generates 7 days which takes ~10-12 minutes.",
+        "WhyMemory3008": "pandas + numpy simulation requires ~2-3GB RAM for 7 days of data generation.",
+        "SCDChanges": "5% probability per run of injecting small dimension changes for SCD Type 2 demonstration.",
+        "StateManagement": "Inventory state persisted to S3 between runs for continuity of closing_stock -> opening_stock."
+    },
+    "Commands": {
+        "deploy_daily": "python -m infrastructure.aws.deploy_lambda --mode daily",
+        "deploy_weekly": "python -m infrastructure.aws.deploy_lambda --mode weekly",
+        "trigger_manual": "python -m infrastructure.aws.deploy_lambda --trigger-only --trigger",
+        "trigger_7_days": "python -m infrastructure.aws.deploy_lambda --trigger-only --trigger --days 7",
+        "disable_all": "python -m infrastructure.aws.deploy_lambda --mode disable"
+    }
+}

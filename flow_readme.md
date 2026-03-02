@@ -379,3 +379,43 @@
   Experimentation complete in 164s
 ============================================================
 (base) (last-mile-fulfilment-optimization-py3.11) PS C:\Users\bhavy\OneDrive\Desktop\GITHUB\BHAVYA\Last-Mile-Fulfilment-Optimization> 
+
+
+
+- docker exec last-mile-fulfilment-optimization-airflow-apiserver-1 cat /opt/airflow/simple_auth_manager_passwords.json.generated
+
+- docker exec last-mile-fulfilment-optimization-airflow-apiserver-1 cat /opt/airflow/simple_auth_manager_passwords.json.generated
+
+
+SELECT MAX(order_date) FROM FULFILLMENT_DB.RAW.FACT_ORDERS;
+-- Should advance by 1 day each daily run
+
+SELECT MAX(date) FROM FULFILLMENT_DB.MARTS.MART_DAILY_WAREHOUSE_KPIS;
+-- Should match fact_orders max date after dbt runs
+
+SELECT MAX(date) FROM FULFILLMENT_DB.MARTS.MART_DAILY_PRODUCT_KPIS
+WHERE is_forecast = FALSE;
+-- Should match after ML runs
+```
+
+---
+
+- **How the daily flow works:**
+```
+Every day at 2am UTC (automatically):
+  EventBridge fires → Lambda runs → generates 1 day → uploads to S3
+
+Airflow S3 sensor detects new file → pipeline runs automatically
+```
+
+---
+
+- **What you need to do tomorrow:**
+
+The confusion is this — **Airflow only runs while Docker is running**. So:
+```
+Tomorrow morning:
+1. docker-compose up -d     ← starts Airflow
+2. Airflow checks S3        ← Lambda already ran at 2am, file is there
+3. Pipeline runs            ← automatic
+4. Snowflake updated        ← data is there
