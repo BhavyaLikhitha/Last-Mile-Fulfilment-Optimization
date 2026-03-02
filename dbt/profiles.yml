@@ -1,0 +1,13 @@
+default:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      database: "{{ env_var('SNOWFLAKE_DATABASE', 'FULFILLMENT_DB') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', 'FULFILLMENT_WH') }}"
+      role: ACCOUNTADMIN
+      schema: RAW
+      threads: 4
