@@ -194,8 +194,10 @@ with DAG(
     # schedule='0 6 * * 1', 
     # this is daily schedule for testing
     # schedule='0 6 * * *',
-    schedule='0 16 * * *',
-    start_date=datetime(2026, 2, 28),
+    schedule='0 15 * * *',
+    # schedule = '33 23 * * *',
+    # start_date=datetime(2026, 2, 28),
+    start_date=datetime(2026, 3, 4),
     catchup=False,
     max_active_runs=1,
     tags=['fulfillment', 'weekly', 'production'],
