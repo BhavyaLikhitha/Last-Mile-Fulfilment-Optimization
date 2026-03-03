@@ -1,3 +1,4 @@
+# data_simulation/lambda_handler.py
 """
 Lambda Handler — Incremental Data Generation
 Generates N days of fulfillment data starting from the day after
@@ -206,8 +207,6 @@ def generate_days(start_date: date, end_date: date, state_dict: dict = None) -> 
     Generate data for date range [start_date, end_date].
     Returns summary stats.
     """
-    # Import simulation modules
-    # These are bundled in the Lambda deployment package
     from config.constants import RANDOM_SEED
     from data_simulation.core.dimensions import (
         generate_dim_product, generate_dim_warehouse, generate_dim_supplier,
@@ -224,11 +223,9 @@ def generate_days(start_date: date, end_date: date, state_dict: dict = None) -> 
     total_days = (end_date - start_date).days + 1
     run_seed   = int(start_date.strftime('%Y%m%d'))
 
-    # RNG for fact data
     rng      = np.random.default_rng(run_seed)
-    rng_dims = np.random.default_rng(RANDOM_SEED)  # same seed as original — identical dims
+    rng_dims = np.random.default_rng(RANDOM_SEED)
 
-    # Load dimension tables (same seed as original backfill)
     print("  Loading dimension tables...")
     products_df    = generate_dim_product(rng_dims)
     warehouses_df  = generate_dim_warehouse()
@@ -237,7 +234,6 @@ def generate_days(start_date: date, end_date: date, state_dict: dict = None) -> 
     customers_df   = generate_dim_customer(rng_dims)
     experiments_df = generate_dim_experiments()
 
-    # Maybe inject SCD Type 2 changes
     products_df, suppliers_df, drivers_df, customers_df, scd_changed = \
         maybe_inject_scd_changes(products_df, suppliers_df, drivers_df, customers_df, rng, run_seed)
 
@@ -247,7 +243,6 @@ def generate_days(start_date: date, end_date: date, state_dict: dict = None) -> 
         upload_dimension_to_s3(drivers_df,   'dim_driver')
         upload_dimension_to_s3(customers_df, 'dim_customer')
 
-    # Initialize or restore state
     state = SimulationState()
     if state_dict:
         print("  Restoring state from S3...")
@@ -260,7 +255,6 @@ def generate_days(start_date: date, end_date: date, state_dict: dict = None) -> 
         state.assignment_counter = LAMBDA_ASSIGNMENT_OFFSET
         state.day_counter        = EXTENSION_BACKFILL_DAYS
 
-    # Generate daily fact data
     totals = {k: 0 for k in ['orders','items','inventory','shipments','deliveries','drivers','assignments']}
 
     current_date = start_date
@@ -293,7 +287,6 @@ def generate_days(start_date: date, end_date: date, state_dict: dict = None) -> 
             current_date, orders_df, rng, state.assignment_counter
         )
 
-        # Upload to S3
         upload_csv_to_s3(orders_df,          'fact_orders',                 current_date)
         upload_csv_to_s3(items_df,           'fact_order_items',            current_date)
         upload_csv_to_s3(inventory_df,       'fact_inventory_snapshot',     current_date)
@@ -314,7 +307,6 @@ def generate_days(start_date: date, end_date: date, state_dict: dict = None) -> 
 
         current_date += timedelta(days=1)
 
-    # Save updated state to S3
     save_state_to_s3(state.to_dict())
 
     return totals
@@ -339,25 +331,43 @@ def lambda_handler(event: dict, context) -> dict:
 
     start_time = time.time()
 
-    # Determine mode and date range
-    mode = event.get('mode', 'daily')
+    # Today's date — never generate beyond this
+    today = date.today()
 
+    mode      = event.get('mode', 'daily')
     last_date = get_last_date_in_s3()
-    print(f"  Last date in S3: {last_date}")
+    print(f"  Last date in S3 : {last_date}")
+    print(f"  Today           : {today}")
 
+    # ── Determine date range ───────────────────────────────────
     if mode == 'backfill' and 'start_date' in event and 'end_date' in event:
+        # Backfill mode: explicit range, no today cap (intentional historical load)
         start_date = date.fromisoformat(event['start_date'])
         end_date   = date.fromisoformat(event['end_date'])
+
     elif mode == 'weekly':
         start_date = last_date + timedelta(days=1)
-        end_date   = last_date + timedelta(days=7)
+        end_date   = min(last_date + timedelta(days=7), today)  # never exceed today
+
     elif mode == 'manual' and 'days' in event:
         start_date = last_date + timedelta(days=1)
-        end_date   = last_date + timedelta(days=int(event['days']))
+        end_date   = min(last_date + timedelta(days=int(event['days'])), today)  # never exceed today
+
     else:
-        # Default: daily — generate 1 day
+        # Default: daily — generate exactly 1 day, never future
         start_date = last_date + timedelta(days=1)
-        end_date   = start_date
+        end_date   = min(start_date, today)  # never exceed today
+
+    # ── Guard: already up to date ──────────────────────────────
+    if start_date > today:
+        print(f"\n  Already up to date (last={last_date}, today={today})")
+        print(f"  Nothing to generate. Exiting cleanly.")
+        return {
+            'statusCode' : 200,
+            'message'    : 'already_up_to_date',
+            'last_date'  : str(last_date),
+            'today'      : str(today),
+        }
 
     print(f"  Mode       : {mode}")
     print(f"  Generating : {start_date} → {end_date} ({(end_date - start_date).days + 1} days)")
