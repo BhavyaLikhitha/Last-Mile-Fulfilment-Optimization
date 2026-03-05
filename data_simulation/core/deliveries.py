@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 from datetime import date, datetime, timedelta
 from typing import Tuple
+from config.constants import WAREHOUSE_DISTANCE_FACTORS
 
 from config.constants import (
     SLA_MINUTES, DELIVERY_STATUS_DISTRIBUTION, BATCH_ID_PREFIX,
@@ -81,7 +82,9 @@ def generate_daily_deliveries(
         
         # Estimated ETA (distance / speed * 60 + handling time)
         handling_minutes = rng.uniform(5, 20)
-        estimated_eta = round((distance_km / avg_speed) * 60 + handling_minutes, 2)
+        # estimated_eta = round((distance_km / avg_speed) * 60 + handling_minutes, 2)
+        distance_factor = WAREHOUSE_DISTANCE_FACTORS.get(wh_id, 1.0)
+        estimated_eta = round((distance_km / avg_speed) * 60 * distance_factor + handling_minutes, 2)
         
         # Actual delivery time (add variability: traffic, parking, etc.)
         variability = rng.normal(1.0, 0.20)
