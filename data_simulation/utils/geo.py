@@ -62,13 +62,19 @@ def get_delivery_distance(warehouse_id: str, customer_lat: float, customer_lon: 
 def generate_customer_location(warehouse_id: str, rng: np.random.Generator) -> Tuple[float, float]:
     """
     Generate a customer location near a specific warehouse.
-    Customers are within ~50-150km of their regional warehouse.
+    Customers are within ~10-30km of their regional warehouse.
+
+    Fix: Reduced offset from (-1.2, 1.2) degrees (~150km) to (-0.3, 0.3) degrees (~30km).
+    1 degree latitude ≈ 111 km. 0.3 degrees ≈ 33 km straight-line.
+    With 1.3x road factor, effective delivery distance = 10-40 km.
+    This reflects true last-mile delivery range used by companies like Amazon and FedEx
+    for urban/suburban fulfillment centers.
     """
     wh_lat, wh_lon = WAREHOUSE_COORDS[warehouse_id]
     
-    # Random offset: ~0.1 to 1.5 degrees (~10-150km)
-    lat_offset = rng.uniform(-1.2, 1.2)
-    lon_offset = rng.uniform(-1.2, 1.2)
+    # Random offset: ~0.1 to 0.3 degrees (~10-30km straight-line)
+    lat_offset = rng.uniform(-0.3, 0.3)
+    lon_offset = rng.uniform(-0.3, 0.3)
     
     customer_lat = round(wh_lat + lat_offset, 6)
     customer_lon = round(wh_lon + lon_offset, 6)
