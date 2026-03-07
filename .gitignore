@@ -7,6 +7,8 @@ __pycache__/
 *.parquet
 output/
 output_extension/
+lambda_build/
+lambda_package.zip
 # IDE
 .vscode/
 .idea/
@@ -15,6 +17,7 @@ airflow/plugins/
 # OS
 .DS_Store
 Thumbs.db
+dashboard.html
 
 # dbt
 dbt/logs/
