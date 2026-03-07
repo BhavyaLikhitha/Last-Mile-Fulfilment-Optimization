@@ -36,6 +36,7 @@ This platform mirrors the operational intelligence stack used across **e-commerc
 - **FedEx / UPS / XPO Logistics** — route optimization, delivery performance tracking, warehouse throughput analysis, SLA compliance reporting
 - **Uber / Lyft / Grab (Data Platform)** — multi-vintage forecast comparison, A/B experiment frameworks, ML prediction writebacks via bulk MERGE
 - **Shopify / BigCommerce / Magento** — supplier reliability tracking, SCD Type 2 dimension history, inventory turnover, merchant fulfillment analytics
+- **Kroger / Albertsons / Whole Foods** — perishable inventory management, supplier reliability tracking, replenishment cycle optimization
 - **Zomato / Swiggy / Deliveroo** — hyperlocal last-mile delivery, driver dispatch optimization, order priority SLA management
 - **IKEA / Home Depot / Lowe's** — large SKU catalog demand forecasting, regional warehouse allocation, holding cost optimization
 - **Alibaba / JD.com / Flipkart** — distributed fulfillment at scale, cross-region order routing, real-time inventory visibility
