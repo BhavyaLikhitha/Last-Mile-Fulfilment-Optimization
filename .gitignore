@@ -9,6 +9,7 @@ output/
 output_extension/
 lambda_build/
 lambda_package.zip
+payload.json
 # IDE
 .vscode/
 .idea/
