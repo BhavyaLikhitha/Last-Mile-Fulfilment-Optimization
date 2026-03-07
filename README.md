@@ -8,7 +8,7 @@
 
 ## 🔍 Project Overview
 
-This platform is a **full end-to-end data engineering and analytics solution** built to simulate and optimize a distributed last-mile fulfillment network across 8 US warehouses and 500 products. It spans every layer of the modern data stack — synthetic data generation, cloud ingestion, warehouse transformation, machine learning, cost optimization, A/B experimentation, and business intelligence — all orchestrated through a production-grade Airflow pipeline.
+This platform is a **full end-to-end data engineering and analytics solution** built to simulate and optimize a distributed last-mile fulfillment network across 8 US warehouses and 500 products. It spans every layer of the modern data stack like synthetic data generation, cloud ingestion, warehouse transformation, machine learning, cost optimization, A/B experimentation, and business intelligence, all orchestrated through a production-grade Airflow pipeline.
 
 The platform generates **40M+ rows of realistic operational data** covering orders, inventory snapshots, deliveries, driver activity, supplier shipments, and A/B experiment assignments across a 4-year timeline (Feb 2022 → Sep 2026). Every component mirrors how real fulfillment companies like Amazon, Walmart, Chewy, and DoorDash operate their data platforms.
 
@@ -109,18 +109,18 @@ The data model, pipeline architecture, and analytical outputs are designed to an
 
 This platform deliberately covers **three roles in one codebase** — making it a rare portfolio project that demonstrates depth across the full data stack:
 
-**For Data Engineers:**
+**For Data Engineering:**
 - Production-grade S3 → Airflow → Snowflake → dbt pipeline with idempotency at every layer (COPY INTO load history, QUALIFY ROW_NUMBER dedup, incremental dbt merge, bulk MERGE writebacks)
 - SCD Type 2 snapshots on 4 dimension tables, detecting changes injected by Lambda
 - Custom Docker image with pre-baked dependencies eliminating runtime install delays
 - 13-task DAG with proper sensor, dedup, verification, and post-processing stages
 
-**For Data Scientists:**
+**For Data Science:**
 - 3 production-style ML models with incremental scoring (never re-score historical rows), 60-day lookback buffer for lag feature validity
 - Multi-vintage forecasting using `forecast_generated_date` as a composite key — same pattern used by Uber and DoorDash for model drift detection
 - Bulk MERGE writeback pattern (100 seconds for 733K rows vs 10+ hours row-by-row)
 
-**For Data Analysts:**
+**For Data Analysis:**
 - 6-page Power BI dashboard with dynamic DAX measures using `YEAR(TODAY())` for self-updating YoY comparisons
 - Direct Snowflake connection to pre-aggregated MARTS (no gateway needed, auto-resume on query)
 - Warehouse-level operational insights: NYC 58% on-time vs Denver 96%, SLA breach correlates with driver utilization
