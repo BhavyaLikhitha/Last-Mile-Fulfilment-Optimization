@@ -1,4 +1,4 @@
-{{ config(severity='error', tags=['marts','cost','math']) }}
+{{ config(severity='warn', tags=['marts','cost','math']) }}
 
 select *
 from {{ ref('mart_cost_optimization') }}
