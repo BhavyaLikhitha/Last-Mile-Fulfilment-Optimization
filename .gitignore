@@ -19,6 +19,7 @@ airflow/plugins/
 .DS_Store
 Thumbs.db
 dashboard.html
+resume points.txt
 
 # dbt
 dbt/logs/
