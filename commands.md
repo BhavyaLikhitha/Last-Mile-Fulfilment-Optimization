@@ -171,8 +171,7 @@ docker-compose up -d
 docker-compose ps
 
 # Get Airflow login password
-docker exec last-mile-fulfilment-optimization-airflow-apiserver-1 `
-  cat /opt/airflow/simple_auth_manager_passwords.json.generated
+docker exec last-mile-fulfilment-optimization-airflow-apiserver-1 cat /opt/airflow/simple_auth_manager_passwords.json.generated
 
 # View logs
 docker-compose logs -f airflow-worker
