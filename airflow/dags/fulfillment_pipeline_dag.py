@@ -1325,7 +1325,7 @@ with DAG(
     dag_id='fulfillment_pipeline',
     default_args=default_args,
     description='Weekly fulfillment platform pipeline',
-    schedule='40 14 * * *',
+    schedule='35 16 * * *',
     start_date=datetime(2026, 3, 4),
     catchup=False,
     max_active_runs=1,
