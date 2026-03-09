@@ -4,9 +4,9 @@
 #   - airflow-apiserver replaces airflow-webserver
 #   - airflow-dag-processor is a new required service
 #   - AIRFLOW__CORE__EXECUTION_API_SERVER_URL must be set
-#   - User creation via AIRFLOW__CORE__AUTH_MANAGER env vars
+#   - No login required — ALL_ADMINS=true with empty users list
 #
-# Access: http://localhost:8081  (admin / admin)
+# Access: http://localhost:8081  (just click Sign In — no credentials needed)
 #
 # Usage:
 #   docker-compose up airflow-init   # first time only
@@ -21,10 +21,10 @@ x-airflow-common: &airflow-common
   image: fulfillment-airflow:3.1.6
   environment: &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
-    # Simple Auth Manager (default in Airflow 3.x — no FAB needed)
-    # Users defined here: username:role pairs
-    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS: "admin:admin"
-    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: 'false'
+    # No-auth mode: ALL_ADMINS=true + empty users list = no login required
+    AIRFLOW__CORE__AUTH_MANAGER: 'airflow.api_fastapi.auth.managers.simple.simple_auth_manager.SimpleAuthManager'
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: 'true'
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS: ''
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
     AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
     AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
