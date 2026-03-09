@@ -8,7 +8,12 @@ Key design decisions:
 - ML/optimization/experimentation use PythonOperator to avoid subprocess PATH issues
 - S3 sensor uses mode='poke' for simpler testing
 - start_date before first run date so manual triggers work
-- Dedup step after COPY INTO prevents duplicate rows from re-loading S3 files
+- COPY INTO uses date-partitioned paths (date={{ ds }}) + FORCE=TRUE so:
+    (a) only today's files are loaded each run — no full-history reload
+    (b) FORCE=TRUE ensures Snowflake never skips a file due to load history,
+        which caused the March 9 orders/deliveries mismatch when the DAG
+        was triggered late after a missed schedule
+- Dedup step after COPY INTO prevents duplicate rows from FORCE re-loads
 - post_processing task applies analytical adjustments to mart tables after dbt run
   These adjustments inject realistic variance into mart columns that the simulation
   generates uniformly. They run every pipeline cycle so new incremental data
@@ -46,38 +51,44 @@ default_args = {
 }
 
 # ── Snowflake SQL ─────────────────────────────────────────────
+# COPY INTO loads only today's date partition (date={{ ds }}) with FORCE=TRUE.
+# This means:
+#   - Only today's files are loaded each run — not the full S3 prefix history
+#   - FORCE=TRUE ensures the file is always loaded even if Snowflake's load
+#     history already recorded it (e.g. from a previous partial/failed run)
+#   - The dedup step immediately after handles any duplicate rows safely
 COPY_INTO_SQL = """
 USE DATABASE FULFILLMENT_DB;
 USE SCHEMA RAW;
 USE WAREHOUSE FULFILLMENT_WH;
 
 COPY INTO FACT_ORDERS
-FROM @s3_fulfillment_stage/fact_orders/
-FILE_FORMAT = csv_format PATTERN = '.*data\\.csv' ON_ERROR = 'CONTINUE';
+FROM @s3_fulfillment_stage/fact_orders/date={{ ds }}/
+FILE_FORMAT = csv_format ON_ERROR = 'CONTINUE' FORCE = TRUE;
 
 COPY INTO FACT_ORDER_ITEMS
-FROM @s3_fulfillment_stage/fact_order_items/
-FILE_FORMAT = csv_format PATTERN = '.*data\\.csv' ON_ERROR = 'CONTINUE';
+FROM @s3_fulfillment_stage/fact_order_items/date={{ ds }}/
+FILE_FORMAT = csv_format ON_ERROR = 'CONTINUE' FORCE = TRUE;
 
 COPY INTO FACT_INVENTORY_SNAPSHOT
-FROM @s3_fulfillment_stage/fact_inventory_snapshot/
-FILE_FORMAT = csv_format PATTERN = '.*data\\.csv' ON_ERROR = 'CONTINUE';
+FROM @s3_fulfillment_stage/fact_inventory_snapshot/date={{ ds }}/
+FILE_FORMAT = csv_format ON_ERROR = 'CONTINUE' FORCE = TRUE;
 
 COPY INTO FACT_SHIPMENTS
-FROM @s3_fulfillment_stage/fact_shipments/
-FILE_FORMAT = csv_format PATTERN = '.*data\\.csv' ON_ERROR = 'CONTINUE';
+FROM @s3_fulfillment_stage/fact_shipments/date={{ ds }}/
+FILE_FORMAT = csv_format ON_ERROR = 'CONTINUE' FORCE = TRUE;
 
 COPY INTO FACT_DELIVERIES
-FROM @s3_fulfillment_stage/fact_deliveries/
-FILE_FORMAT = csv_format PATTERN = '.*data\\.csv' ON_ERROR = 'CONTINUE';
+FROM @s3_fulfillment_stage/fact_deliveries/date={{ ds }}/
+FILE_FORMAT = csv_format ON_ERROR = 'CONTINUE' FORCE = TRUE;
 
 COPY INTO FACT_DRIVER_ACTIVITY
-FROM @s3_fulfillment_stage/fact_driver_activity/
-FILE_FORMAT = csv_format PATTERN = '.*data\\.csv' ON_ERROR = 'CONTINUE';
+FROM @s3_fulfillment_stage/fact_driver_activity/date={{ ds }}/
+FILE_FORMAT = csv_format ON_ERROR = 'CONTINUE' FORCE = TRUE;
 
 COPY INTO FACT_EXPERIMENT_ASSIGNMENTS
-FROM @s3_fulfillment_stage/fact_experiment_assignments/
-FILE_FORMAT = csv_format PATTERN = '.*data\\.csv' ON_ERROR = 'CONTINUE';
+FROM @s3_fulfillment_stage/fact_experiment_assignments/date={{ ds }}/
+FILE_FORMAT = csv_format ON_ERROR = 'CONTINUE' FORCE = TRUE;
 """
 
 DEDUP_SQL = """
@@ -504,15 +515,16 @@ def run_experimentation():
 with DAG(
     dag_id='fulfillment_pipeline',
     default_args=default_args,
-    description='Weekly fulfillment platform pipeline',
+    description='Daily fulfillment platform pipeline',
     schedule='35 16 * * *',
     start_date=datetime(2026, 3, 4),
     catchup=False,
     max_active_runs=1,
-    tags=['fulfillment', 'weekly', 'production'],
+    tags=['fulfillment', 'daily', 'production'],
 ) as dag:
 
-    # Task 1: Wait for Lambda files in S3
+    # Task 1: Wait for today's Lambda orders file in S3
+    # Uses {{ ds }} so it only waits for today's partition, not any date
     wait_for_s3_files = S3KeySensor(
         task_id='wait_for_s3_files',
         bucket_name=S3_BUCKET,
@@ -523,7 +535,7 @@ with DAG(
         mode='poke',
     )
 
-    # Task 2: COPY INTO Snowflake
+    # Task 2: COPY INTO Snowflake — today's partition only, FORCE=TRUE
     copy_into_snowflake = SQLExecuteQueryOperator(
         task_id='copy_into_snowflake',
         sql=COPY_INTO_SQL,
@@ -531,6 +543,7 @@ with DAG(
     )
 
     # Task 3: Deduplicate after COPY INTO
+    # Handles any duplicate rows introduced by FORCE=TRUE re-loads
     dedup_snowflake = SQLExecuteQueryOperator(
         task_id='dedup_snowflake',
         sql=DEDUP_SQL,
