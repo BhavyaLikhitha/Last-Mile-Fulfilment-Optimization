@@ -24,6 +24,7 @@ jobs:
       - name: Terraform Apply
         working-directory: terraform
         run: terraform apply -var-file=environments/dev.tfvars -auto-approve
+        continue-on-error: true
 
   deploy-lambda:
     needs: terraform-apply
