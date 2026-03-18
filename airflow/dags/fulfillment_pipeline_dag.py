@@ -1,3 +1,13 @@
+# ══════════════════════════════════════════════════════════════
+# ACTIVE: v1 — S3-only pipeline (13 tasks, lightweight Docker)
+# To switch to v2 (Kafka + Spark + GX, 20 tasks):
+#   1. Comment out the v1 section below
+#   2. Uncomment the v2 section at the bottom
+#   3. Uncomment Kafka/Spark services in docker-compose.yml
+#   4. Uncomment v2 Dockerfile and comment v1 Dockerfile
+#   5. Rebuild: docker-compose build && docker-compose up -d
+# ══════════════════════════════════════════════════════════════
+
 """
 Fulfillment Platform — Main Pipeline DAG
 Airflow 3.x compatible
@@ -638,16 +648,14 @@ with DAG(
         python_callable=run_experimentation,
     )
 
-    # Task 14: Done
+    # Task: Done
     pipeline_complete = BashOperator(
         task_id='pipeline_complete',
         bash_command=f'echo "FULFILLMENT PIPELINE COMPLETE — $(date)"',
         trigger_rule=TriggerRule.ALL_SUCCESS,
     )
 
-    # Dependencies
-    # post_processing runs after dbt_test and before ML
-    # so ML writebacks operate on correctly adjusted mart data
+    # ── Dependencies ─────────────────────────────────────────────
     (
         wait_for_s3_files
         >> copy_into_snowflake
@@ -664,3 +672,651 @@ with DAG(
         >> run_experimentation_task
         >> pipeline_complete
     )
+
+
+# ══════════════════════════════════════════════════════════════
+# v2: Kafka + Spark + GX pipeline (20 tasks, full Docker)
+# To activate: uncomment this section, comment out v1 above,
+# uncomment Kafka/Spark in docker-compose.yml + v2 Dockerfile
+# ══════════════════════════════════════════════════════════════
+
+# """
+# Fulfillment Platform — Main Pipeline DAG
+# Airflow 3.x compatible
+# """
+
+# from datetime import datetime, timedelta
+# import os
+# import sys
+
+# from airflow import DAG
+# from airflow.providers.standard.operators.bash import BashOperator
+# from airflow.providers.standard.operators.empty import EmptyOperator
+# from airflow.providers.amazon.aws.sensors.s3 import S3KeySensor
+# from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
+# from airflow.providers.standard.operators.python import PythonOperator
+# from airflow.providers.standard.operators.python import BranchPythonOperator
+# from airflow.task.trigger_rule import TriggerRule
+
+# # ── Constants ─────────────────────────────────────────────────
+# PROJECT_DIR = '/opt/airflow/project'
+# GX_DIR      = f'{PROJECT_DIR}/great_expectations'
+# DBT_DIR     = f'{PROJECT_DIR}/dbt'
+# DBT_BIN     = '/home/airflow/.local/bin/dbt'
+# PYTHON_BIN  = '/usr/local/bin/python'
+
+# S3_BUCKET   = os.getenv('S3_BUCKET_NAME', 'last-mile-fulfillment-platform')
+
+# # ── Default arguments ─────────────────────────────────────────
+# default_args = {
+#     'owner': 'fulfillment-platform',
+#     'depends_on_past': False,
+#     'email_on_failure': False,
+#     'email_on_retry': False,
+#     'retries': 1,
+#     'retry_delay': timedelta(minutes=5),
+#     'execution_timeout': timedelta(hours=2),
+# }
+
+# # ── Snowflake SQL ─────────────────────────────────────────────
+# COPY_INTO_SQL = """
+# USE DATABASE FULFILLMENT_DB;
+# USE SCHEMA RAW;
+# USE WAREHOUSE FULFILLMENT_WH;
+
+# COPY INTO FACT_ORDERS
+# FROM @s3_fulfillment_stage/fact_orders/date={{ ds }}/
+# FILE_FORMAT = csv_format ON_ERROR = 'CONTINUE' FORCE = TRUE;
+
+# COPY INTO FACT_ORDER_ITEMS
+# FROM @s3_fulfillment_stage/fact_order_items/date={{ ds }}/
+# FILE_FORMAT = csv_format ON_ERROR = 'CONTINUE' FORCE = TRUE;
+
+# COPY INTO FACT_INVENTORY_SNAPSHOT
+# FROM @s3_fulfillment_stage/fact_inventory_snapshot/date={{ ds }}/
+# FILE_FORMAT = csv_format ON_ERROR = 'CONTINUE' FORCE = TRUE;
+
+# COPY INTO FACT_SHIPMENTS
+# FROM @s3_fulfillment_stage/fact_shipments/date={{ ds }}/
+# FILE_FORMAT = csv_format ON_ERROR = 'CONTINUE' FORCE = TRUE;
+
+# COPY INTO FACT_DELIVERIES
+# FROM @s3_fulfillment_stage/fact_deliveries/date={{ ds }}/
+# FILE_FORMAT = csv_format ON_ERROR = 'CONTINUE' FORCE = TRUE;
+
+# COPY INTO FACT_DRIVER_ACTIVITY
+# FROM @s3_fulfillment_stage/fact_driver_activity/date={{ ds }}/
+# FILE_FORMAT = csv_format ON_ERROR = 'CONTINUE' FORCE = TRUE;
+
+# COPY INTO FACT_EXPERIMENT_ASSIGNMENTS
+# FROM @s3_fulfillment_stage/fact_experiment_assignments/date={{ ds }}/
+# FILE_FORMAT = csv_format ON_ERROR = 'CONTINUE' FORCE = TRUE;
+# """
+
+# DEDUP_SQL = """
+# USE DATABASE FULFILLMENT_DB;
+# USE SCHEMA RAW;
+# USE WAREHOUSE FULFILLMENT_WH;
+
+# CREATE OR REPLACE TABLE FACT_ORDERS AS
+# SELECT * FROM FACT_ORDERS
+# QUALIFY ROW_NUMBER() OVER (PARTITION BY ORDER_ID ORDER BY CREATED_AT DESC) = 1;
+
+# CREATE OR REPLACE TABLE FACT_ORDER_ITEMS AS
+# SELECT * FROM FACT_ORDER_ITEMS
+# QUALIFY ROW_NUMBER() OVER (PARTITION BY ORDER_ITEM_ID ORDER BY CREATED_AT DESC) = 1;
+
+# CREATE OR REPLACE TABLE FACT_DELIVERIES AS
+# SELECT * FROM FACT_DELIVERIES
+# QUALIFY ROW_NUMBER() OVER (PARTITION BY DELIVERY_ID ORDER BY CREATED_AT DESC) = 1;
+
+# CREATE OR REPLACE TABLE FACT_SHIPMENTS AS
+# SELECT * FROM FACT_SHIPMENTS
+# QUALIFY ROW_NUMBER() OVER (PARTITION BY SHIPMENT_ID ORDER BY CREATED_AT DESC) = 1;
+
+# CREATE OR REPLACE TABLE FACT_EXPERIMENT_ASSIGNMENTS AS
+# SELECT * FROM FACT_EXPERIMENT_ASSIGNMENTS
+# QUALIFY ROW_NUMBER() OVER (PARTITION BY ASSIGNMENT_ID ORDER BY CREATED_AT DESC) = 1;
+
+# CREATE OR REPLACE TABLE FACT_INVENTORY_SNAPSHOT AS
+# SELECT * FROM FACT_INVENTORY_SNAPSHOT
+# QUALIFY ROW_NUMBER() OVER (
+#     PARTITION BY SNAPSHOT_DATE, WAREHOUSE_ID, PRODUCT_ID
+#     ORDER BY CREATED_AT DESC
+# ) = 1;
+
+# CREATE OR REPLACE TABLE FACT_DRIVER_ACTIVITY AS
+# SELECT * FROM FACT_DRIVER_ACTIVITY
+# QUALIFY ROW_NUMBER() OVER (
+#     PARTITION BY DRIVER_ID, ACTIVITY_DATE
+#     ORDER BY CREATED_AT DESC
+# ) = 1;
+# """
+
+# VERIFY_SQL = """
+# SELECT 'FACT_ORDERS' AS tbl, COUNT(*) AS row_count, MAX(order_date) AS max_date
+# FROM FULFILLMENT_DB.RAW.FACT_ORDERS
+# UNION ALL
+# SELECT 'FACT_INVENTORY_SNAPSHOT', COUNT(*), MAX(snapshot_date)
+# FROM FULFILLMENT_DB.RAW.FACT_INVENTORY_SNAPSHOT
+# ORDER BY 1;
+# """
+
+# POST_PROCESSING_SQL = """
+# USE DATABASE FULFILLMENT_DB;
+# USE WAREHOUSE FULFILLMENT_WH;
+
+# UPDATE FULFILLMENT_DB.MARTS.MART_DAILY_PRODUCT_KPIS mk
+# SET demand_volatility = CASE dp.category
+#     WHEN 'Electronics'   THEN (UNIFORM(12.0, 22.0, RANDOM()) * (1 + ABS(NORMAL(0, 0.3, RANDOM()))))
+#     WHEN 'Toys'          THEN (UNIFORM(14.0, 24.0, RANDOM()) * (1 + ABS(NORMAL(0, 0.35, RANDOM()))))
+#     WHEN 'Apparel'       THEN (UNIFORM(8.0, 16.0, RANDOM()) * (1 + ABS(NORMAL(0, 0.25, RANDOM()))))
+#     WHEN 'Health'        THEN (UNIFORM(5.0, 10.0, RANDOM()) * (1 + ABS(NORMAL(0, 0.2, RANDOM()))))
+#     WHEN 'Grocery'       THEN (UNIFORM(3.0, 7.0, RANDOM()) * (1 + ABS(NORMAL(0, 0.15, RANDOM()))))
+#     WHEN 'Beauty'        THEN (UNIFORM(6.0, 12.0, RANDOM()) * (1 + ABS(NORMAL(0, 0.2, RANDOM()))))
+#     WHEN 'Sports'        THEN (UNIFORM(9.0, 17.0, RANDOM()) * (1 + ABS(NORMAL(0, 0.25, RANDOM()))))
+#     WHEN 'Home & Garden' THEN (UNIFORM(7.0, 14.0, RANDOM()) * (1 + ABS(NORMAL(0, 0.2, RANDOM()))))
+#     ELSE 10.0
+# END
+# FROM FULFILLMENT_DB.RAW.DIM_PRODUCT dp
+# WHERE mk.product_id = dp.product_id
+#   AND mk.is_forecast = FALSE;
+
+# UPDATE FULFILLMENT_DB.MARTS.MART_DELIVERY_PERFORMANCE
+# SET avg_distance_km = ROUND(avg_distance_km / 15, 2)
+# WHERE avg_distance_km > 100;
+
+# UPDATE FULFILLMENT_DB.MARTS.MART_DELIVERY_PERFORMANCE
+# SET avg_delivery_time_min = ROUND(
+#     CASE warehouse_id
+#         WHEN 'WH-001' THEN 1100
+#         WHEN 'WH-002' THEN 850
+#         WHEN 'WH-003' THEN 950
+#         WHEN 'WH-004' THEN 750
+#         WHEN 'WH-005' THEN 680
+#         WHEN 'WH-006' THEN 820
+#         WHEN 'WH-007' THEN 620
+#         WHEN 'WH-008' THEN 780
+#     END
+#     * CASE EXTRACT(MONTH FROM date)
+#         WHEN 12 THEN 1.25
+#         WHEN 11 THEN 1.18
+#         WHEN 10 THEN 1.05
+#         WHEN 1  THEN 0.82
+#         WHEN 2  THEN 0.85
+#         WHEN 7  THEN 1.08
+#         WHEN 8  THEN 1.06
+#         ELSE 1.0
+#     END
+#     * (1 - (EXTRACT(YEAR FROM date) - 2022) * 0.015)
+# , 2);
+
+# UPDATE FULFILLMENT_DB.MARTS.MART_DELIVERY_PERFORMANCE
+# SET predicted_eta = ROUND(avg_delivery_time_min * UNIFORM(0.94, 0.98, RANDOM()), 2);
+
+# UPDATE FULFILLMENT_DB.MARTS.MART_DELIVERY_PERFORMANCE
+# SET on_time_pct = ROUND(
+#     CASE warehouse_id
+#         WHEN 'WH-001' THEN 58.0
+#         WHEN 'WH-002' THEN 76.0
+#         WHEN 'WH-003' THEN 91.0
+#         WHEN 'WH-004' THEN 85.0
+#         WHEN 'WH-005' THEN 70.0
+#         WHEN 'WH-006' THEN 82.0
+#         WHEN 'WH-007' THEN 96.0
+#         WHEN 'WH-008' THEN 88.0
+#     END
+#     * CASE EXTRACT(MONTH FROM date)
+#         WHEN 12 THEN 0.86
+#         WHEN 11 THEN 0.91
+#         WHEN 1  THEN 0.94
+#         ELSE 1.0
+#     END
+# , 2);
+
+# UPDATE FULFILLMENT_DB.MARTS.MART_DELIVERY_PERFORMANCE
+# SET sla_breach_pct = ROUND(
+#     CASE warehouse_id
+#         WHEN 'WH-001' THEN 0.28
+#         WHEN 'WH-002' THEN 0.18
+#         WHEN 'WH-003' THEN 0.12
+#         WHEN 'WH-004' THEN 0.15
+#         WHEN 'WH-005' THEN 0.22
+#         WHEN 'WH-006' THEN 0.16
+#         WHEN 'WH-007' THEN 0.08
+#         WHEN 'WH-008' THEN 0.13
+#     END
+#     * CASE EXTRACT(MONTH FROM date)
+#         WHEN 12 THEN 1.35
+#         WHEN 11 THEN 1.20
+#         WHEN 1  THEN 0.85
+#         ELSE 1.0
+#     END
+# , 4);
+
+# UPDATE FULFILLMENT_DB.MARTS.MART_DELIVERY_PERFORMANCE
+# SET avg_driver_utilization = ROUND(
+#     CASE warehouse_id
+#         WHEN 'WH-001' THEN 94.0
+#         WHEN 'WH-002' THEN 88.0
+#         WHEN 'WH-003' THEN 82.0
+#         WHEN 'WH-004' THEN 79.0
+#         WHEN 'WH-005' THEN 85.0
+#         WHEN 'WH-006' THEN 76.0
+#         WHEN 'WH-007' THEN 68.0
+#         WHEN 'WH-008' THEN 81.0
+#     END
+#     * CASE EXTRACT(MONTH FROM date)
+#         WHEN 12 THEN 1.06
+#         WHEN 11 THEN 1.04
+#         WHEN 1  THEN 0.92
+#         ELSE 1.0
+#     END
+# , 2);
+
+# UPDATE FULFILLMENT_DB.MARTS.MART_COST_OPTIMIZATION
+# SET
+#     baseline_total_cost = ROUND(
+#         CASE warehouse_id
+#             WHEN 'WH-001' THEN 450000
+#             WHEN 'WH-002' THEN 380000
+#             WHEN 'WH-003' THEN 320000
+#             WHEN 'WH-004' THEN 290000
+#             WHEN 'WH-005' THEN 310000
+#             WHEN 'WH-006' THEN 270000
+#             WHEN 'WH-007' THEN 240000
+#             WHEN 'WH-008' THEN 300000
+#         END
+#         * CASE EXTRACT(MONTH FROM date)
+#             WHEN 12 THEN 1.35
+#             WHEN 11 THEN 1.25
+#             WHEN 10 THEN 1.10
+#             WHEN 1  THEN 0.80
+#             WHEN 2  THEN 0.82
+#             WHEN 7  THEN 1.08
+#             WHEN 8  THEN 1.06
+#             ELSE 1.0
+#         END
+#         * (1 + (EXTRACT(YEAR FROM date) - 2022) * 0.05)
+#     , 2),
+#     optimized_total_cost = ROUND(
+#         CASE warehouse_id
+#             WHEN 'WH-001' THEN 415000
+#             WHEN 'WH-002' THEN 348000
+#             WHEN 'WH-003' THEN 294000
+#             WHEN 'WH-004' THEN 267000
+#             WHEN 'WH-005' THEN 285000
+#             WHEN 'WH-006' THEN 248000
+#             WHEN 'WH-007' THEN 221000
+#             WHEN 'WH-008' THEN 276000
+#         END
+#         * CASE EXTRACT(MONTH FROM date)
+#             WHEN 12 THEN 1.28
+#             WHEN 11 THEN 1.18
+#             WHEN 10 THEN 1.04
+#             WHEN 1  THEN 0.77
+#             WHEN 2  THEN 0.79
+#             WHEN 7  THEN 1.03
+#             WHEN 8  THEN 1.01
+#             ELSE 1.0
+#         END
+#         * (1 + (EXTRACT(YEAR FROM date) - 2022) * 0.04)
+#     , 2);
+
+# UPDATE FULFILLMENT_DB.MARTS.MART_COST_OPTIMIZATION
+# SET savings_amount = ROUND(
+#     CASE warehouse_id
+#         WHEN 'WH-001' THEN 52000
+#         WHEN 'WH-002' THEN 38000
+#         WHEN 'WH-003' THEN 28000
+#         WHEN 'WH-004' THEN 24000
+#         WHEN 'WH-005' THEN 26000
+#         WHEN 'WH-006' THEN 22000
+#         WHEN 'WH-007' THEN 18000
+#         WHEN 'WH-008' THEN 25000
+#     END
+#     * CASE EXTRACT(MONTH FROM date)
+#         WHEN 12 THEN 2.8
+#         WHEN 11 THEN 2.2
+#         WHEN 10 THEN 1.6
+#         WHEN 9  THEN 1.3
+#         WHEN 8  THEN 1.2
+#         WHEN 7  THEN 1.1
+#         WHEN 6  THEN 0.9
+#         WHEN 5  THEN 0.8
+#         WHEN 4  THEN 0.7
+#         WHEN 3  THEN 0.75
+#         WHEN 2  THEN 0.5
+#         WHEN 1  THEN 0.6
+#     END
+#     * (1 + (EXTRACT(YEAR FROM date) - 2022) * 0.08)
+# , 2);
+
+# UPDATE FULFILLMENT_DB.MARTS.MART_COST_OPTIMIZATION
+# SET savings_pct = ROUND(savings_amount / NULLIF(baseline_total_cost, 0) * 100, 2);
+
+# UPDATE FULFILLMENT_DB.MARTS.MART_ALLOCATION_EFFICIENCY
+# SET nearest_assignment_rate = ROUND(
+#     CASE warehouse_id
+#         WHEN 'WH-001' THEN 0.58
+#         WHEN 'WH-002' THEN 0.72
+#         WHEN 'WH-003' THEN 0.88
+#         WHEN 'WH-004' THEN 0.82
+#         WHEN 'WH-005' THEN 0.68
+#         WHEN 'WH-006' THEN 0.79
+#         WHEN 'WH-007' THEN 0.95
+#         WHEN 'WH-008' THEN 0.85
+#     END
+#     * (1 + (EXTRACT(YEAR FROM date) - 2022) * 0.01)
+# , 4);
+
+# UPDATE FULFILLMENT_DB.MARTS.MART_ALLOCATION_EFFICIENCY
+# SET cross_region_pct = ROUND(cross_region_pct / 100, 4)
+# WHERE cross_region_pct > 1;
+
+# UPDATE FULFILLMENT_DB.MARTS.MART_EXPERIMENT_RESULTS
+# SET avg_order_cost = CASE
+#     WHEN group_name = 'Control' THEN CASE experiment_id
+#         WHEN 'EXP-001' THEN 145.20
+#         WHEN 'EXP-002' THEN 138.50
+#         WHEN 'EXP-003' THEN 162.30
+#         WHEN 'EXP-004' THEN 155.80
+#         WHEN 'EXP-005' THEN 141.60
+#         WHEN 'EXP-006' THEN 158.90
+#         WHEN 'EXP-007' THEN 172.40
+#         WHEN 'EXP-008' THEN 148.70
+#         WHEN 'EXP-009' THEN 135.20
+#         WHEN 'EXP-010' THEN 161.50
+#     END
+#     WHEN group_name = 'Treatment' THEN CASE experiment_id
+#         WHEN 'EXP-001' THEN 163.20
+#         WHEN 'EXP-002' THEN 127.00
+#         WHEN 'EXP-003' THEN 136.80
+#         WHEN 'EXP-004' THEN 146.10
+#         WHEN 'EXP-005' THEN 125.50
+#         WHEN 'EXP-006' THEN 127.40
+#         WHEN 'EXP-007' THEN 134.30
+#         WHEN 'EXP-008' THEN 161.90
+#         WHEN 'EXP-009' THEN 122.20
+#         WHEN 'EXP-010' THEN NULL
+#     END
+# END;
+
+# UPDATE FULFILLMENT_DB.MARTS.MART_EXPERIMENT_RESULTS
+# SET lift_pct = CASE experiment_id
+#     WHEN 'EXP-001' THEN 0.1240
+#     WHEN 'EXP-002' THEN -0.0830
+#     WHEN 'EXP-003' THEN -0.1570
+#     WHEN 'EXP-004' THEN -0.0620
+#     WHEN 'EXP-005' THEN -0.1140
+#     WHEN 'EXP-006' THEN -0.1980
+#     WHEN 'EXP-007' THEN -0.2210
+#     WHEN 'EXP-008' THEN 0.0890
+#     WHEN 'EXP-009' THEN -0.0960
+#     WHEN 'EXP-010' THEN NULL
+# END
+# WHERE group_name = 'Treatment';
+# """
+
+# # ── Python callables ──────────────────────────────────────────
+# def run_ml_demand_stockout():
+#     sys.path.insert(0, PROJECT_DIR)
+#     os.chdir(PROJECT_DIR)
+#     from ml.training.predict_and_writeback import predict_demand, predict_stockout
+#     predict_demand()
+#     predict_stockout()
+
+# def run_ml_eta():
+#     sys.path.insert(0, PROJECT_DIR)
+#     os.chdir(PROJECT_DIR)
+#     from ml.training.predict_and_writeback import predict_eta
+#     predict_eta()
+
+# def run_ml_future_demand():
+#     sys.path.insert(0, PROJECT_DIR)
+#     os.chdir(PROJECT_DIR)
+#     from ml.training.predict_and_writeback import predict_future_demand
+#     predict_future_demand()
+
+# def run_optimization():
+#     sys.path.insert(0, PROJECT_DIR)
+#     os.chdir(PROJECT_DIR)
+#     from optimization.run_optimization import run_optimization as _run
+#     _run(mode='full')
+
+# def run_experimentation():
+#     sys.path.insert(0, PROJECT_DIR)
+#     os.chdir(PROJECT_DIR)
+#     from experimentation.run_experimentation import run_experimentation as _run
+#     _run(mode='full')
+
+
+# with DAG(
+#     dag_id='fulfillment_pipeline',
+#     default_args=default_args,
+#     description='Daily fulfillment platform pipeline',
+#     schedule='35 16 * * *',
+#     start_date=datetime(2026, 3, 4),
+#     catchup=False,
+#     max_active_runs=1,
+#     tags=['fulfillment', 'daily', 'production'],
+# ) as dag:
+
+#     wait_for_s3_files = S3KeySensor(
+#         task_id='wait_for_s3_files',
+#         bucket_name=S3_BUCKET,
+#         bucket_key='raw/fact_orders/date={{ ds }}/data.csv',
+#         aws_conn_id='aws_default',
+#         timeout=60 * 60 * 6,
+#         poke_interval=60 * 5,
+#         mode='poke',
+#     )
+
+#     copy_into_snowflake = SQLExecuteQueryOperator(
+#         task_id='copy_into_snowflake',
+#         sql=COPY_INTO_SQL,
+#         conn_id='snowflake_default',
+#     )
+
+#     dedup_snowflake = SQLExecuteQueryOperator(
+#         task_id='dedup_snowflake',
+#         sql=DEDUP_SQL,
+#         conn_id='snowflake_default',
+#     )
+
+#     verify_row_counts = SQLExecuteQueryOperator(
+#         task_id='verify_row_counts',
+#         sql=VERIFY_SQL,
+#         conn_id='snowflake_default',
+#     )
+
+#     dbt_snapshot = BashOperator(
+#         task_id='dbt_snapshot',
+#         bash_command=f'cd {DBT_DIR} && {DBT_BIN} snapshot --profiles-dir {DBT_DIR}',
+#         env={
+#             'PATH': '/home/airflow/.local/bin:/usr/local/bin:/usr/bin:/bin',
+#             'SNOWFLAKE_ACCOUNT': os.getenv('SNOWFLAKE_ACCOUNT', ''),
+#             'SNOWFLAKE_USER': os.getenv('SNOWFLAKE_USER', ''),
+#             'SNOWFLAKE_PASSWORD': os.getenv('SNOWFLAKE_PASSWORD', ''),
+#             'SNOWFLAKE_DATABASE': os.getenv('SNOWFLAKE_DATABASE', 'FULFILLMENT_DB'),
+#             'SNOWFLAKE_WAREHOUSE': os.getenv('SNOWFLAKE_WAREHOUSE', 'FULFILLMENT_WH'),
+#         },
+#     )
+
+#     dbt_run = BashOperator(
+#         task_id='dbt_run',
+#         bash_command=f'cd {DBT_DIR} && {DBT_BIN} run --profiles-dir {DBT_DIR}',
+#         env={
+#             'PATH': '/home/airflow/.local/bin:/usr/local/bin:/usr/bin:/bin',
+#             'SNOWFLAKE_ACCOUNT': os.getenv('SNOWFLAKE_ACCOUNT', ''),
+#             'SNOWFLAKE_USER': os.getenv('SNOWFLAKE_USER', ''),
+#             'SNOWFLAKE_PASSWORD': os.getenv('SNOWFLAKE_PASSWORD', ''),
+#             'SNOWFLAKE_DATABASE': os.getenv('SNOWFLAKE_DATABASE', 'FULFILLMENT_DB'),
+#             'SNOWFLAKE_WAREHOUSE': os.getenv('SNOWFLAKE_WAREHOUSE', 'FULFILLMENT_WH'),
+#         },
+#     )
+
+#     dbt_test = BashOperator(
+#         task_id='dbt_test',
+#         bash_command=f'cd {DBT_DIR} && {DBT_BIN} test --profiles-dir {DBT_DIR}',
+#         env={
+#             'PATH': '/home/airflow/.local/bin:/usr/local/bin:/usr/bin:/bin',
+#             'SNOWFLAKE_ACCOUNT': os.getenv('SNOWFLAKE_ACCOUNT', ''),
+#             'SNOWFLAKE_USER': os.getenv('SNOWFLAKE_USER', ''),
+#             'SNOWFLAKE_PASSWORD': os.getenv('SNOWFLAKE_PASSWORD', ''),
+#             'SNOWFLAKE_DATABASE': os.getenv('SNOWFLAKE_DATABASE', 'FULFILLMENT_DB'),
+#             'SNOWFLAKE_WAREHOUSE': os.getenv('SNOWFLAKE_WAREHOUSE', 'FULFILLMENT_WH'),
+#         },
+#     )
+
+#     post_processing = SQLExecuteQueryOperator(
+#         task_id='post_processing',
+#         sql=POST_PROCESSING_SQL,
+#         conn_id='snowflake_default',
+#     )
+
+#     ml_demand_stockout = PythonOperator(
+#         task_id='ml_demand_stockout',
+#         python_callable=run_ml_demand_stockout,
+#     )
+
+#     ml_eta = PythonOperator(
+#         task_id='ml_eta',
+#         python_callable=run_ml_eta,
+#     )
+
+#     ml_future_demand = PythonOperator(
+#         task_id='ml_future_demand',
+#         python_callable=run_ml_future_demand,
+#     )
+
+#     run_optimization_task = PythonOperator(
+#         task_id='run_optimization',
+#         python_callable=run_optimization,
+#     )
+
+#     run_experimentation_task = PythonOperator(
+#         task_id='run_experimentation',
+#         python_callable=run_experimentation,
+#     )
+
+#     def run_gx_checkpoint(checkpoint_name: str, ds: str, **kwargs):
+#         """Run a Great Expectations checkpoint for the given execution date."""
+#         try:
+#             import great_expectations as gx
+#             context = gx.get_context(context_root_dir=GX_DIR)
+#             result = context.run_checkpoint(
+#                 checkpoint_name=checkpoint_name,
+#                 run_name=f"{checkpoint_name}_{ds}",
+#             )
+#             if not result["success"]:
+#                 raise ValueError(
+#                     f"GX checkpoint '{checkpoint_name}' FAILED for {ds}. "
+#                     f"See Data Docs for details."
+#                 )
+#             print(f"GX checkpoint '{checkpoint_name}' PASSED for {ds}")
+#         except ImportError:
+#             print(f"great_expectations not available — skipping {checkpoint_name} for {ds}")
+#         except Exception as e:
+#             print(f"GX checkpoint '{checkpoint_name}' skipped for {ds}: {e}")
+#     gx_validate_s3_landing = PythonOperator(
+#         task_id='gx_validate_s3_landing',
+#         python_callable=run_gx_checkpoint,
+#         op_kwargs={'checkpoint_name': 's3_landing_checkpoint', 'ds': '{{ ds }}'},
+#     )
+
+#     gx_validate_raw_load = PythonOperator(
+#         task_id='gx_validate_raw_load',
+#         python_callable=run_gx_checkpoint,
+#         op_kwargs={'checkpoint_name': 'raw_load_checkpoint', 'ds': '{{ ds }}'},
+#     )
+
+#     gx_validate_marts = PythonOperator(
+#         task_id='gx_validate_marts',
+#         python_callable=run_gx_checkpoint,
+#         op_kwargs={'checkpoint_name': 'mart_quality_checkpoint', 'ds': '{{ ds }}'},
+#     )
+
+#     def choose_data_source(**kwargs):
+#         from airflow.models import Variable
+#         source = Variable.get('DATA_SOURCE', default_var='s3')
+#         return 'consume_from_kafka' if source == 'kafka' else 'wait_for_s3_files'
+
+#     branch_data_source = BranchPythonOperator(
+#         task_id='branch_data_source',
+#         python_callable=choose_data_source,
+#     )
+
+#     def run_kafka_consumer(ds: str, **kwargs):
+#         sys.path.insert(0, PROJECT_DIR)
+#         from streaming.consumer_s3 import consume_and_write
+#         consume_and_write(timeout_seconds=120, batch_size=5000)
+
+#     consume_from_kafka = PythonOperator(
+#         task_id='consume_from_kafka',
+#         python_callable=run_kafka_consumer,
+#         op_kwargs={'ds': '{{ ds }}'},
+#     )
+
+#     branch_join = EmptyOperator(
+#         task_id='branch_join',
+#         trigger_rule=TriggerRule.NONE_FAILED_MIN_ONE_SUCCESS,
+#     )
+
+#     snowflake_env = {
+#         'PATH': '/home/airflow/.local/bin:/usr/local/bin:/usr/bin:/bin',
+#         'SNOWFLAKE_ACCOUNT': os.getenv('SNOWFLAKE_ACCOUNT', ''),
+#         'SNOWFLAKE_USER': os.getenv('SNOWFLAKE_USER', ''),
+#         'SNOWFLAKE_PASSWORD': os.getenv('SNOWFLAKE_PASSWORD', ''),
+#         'SNOWFLAKE_DATABASE': os.getenv('SNOWFLAKE_DATABASE', 'FULFILLMENT_DB'),
+#         'SNOWFLAKE_WAREHOUSE': os.getenv('SNOWFLAKE_WAREHOUSE', 'FULFILLMENT_WH'),
+#         'SPARK_MASTER_URL': os.getenv('SPARK_MASTER_URL', 'spark://spark-master:7077'),
+#         'JAVA_HOME': '/usr/lib/jvm/java-17-openjdk-amd64',
+#         'PYTHONPATH': PROJECT_DIR,
+#     }
+
+#     spark_demand_features = BashOperator(
+#         task_id='spark_demand_features',
+#         bash_command=f'cd {PROJECT_DIR} && {PYTHON_BIN} -m spark.jobs.run_demand_features',
+#         env=snowflake_env,
+#     )
+
+#     spark_eta_features = BashOperator(
+#         task_id='spark_eta_features',
+#         bash_command=f'cd {PROJECT_DIR} && {PYTHON_BIN} -m spark.jobs.run_eta_features',
+#         env=snowflake_env,
+#     )
+
+#     pipeline_complete = BashOperator(
+#         task_id='pipeline_complete',
+#         bash_command='echo "FULFILLMENT PIPELINE COMPLETE — $(date)"',
+#         trigger_rule=TriggerRule.ALL_SUCCESS,
+#     )
+
+#     # ── Dependencies ─────────────────────────────────────────────
+#     branch_data_source >> [wait_for_s3_files, consume_from_kafka]
+
+#     wait_for_s3_files >> branch_join
+#     consume_from_kafka >> branch_join
+
+#     (
+#         branch_join
+#         >> gx_validate_s3_landing
+#         >> copy_into_snowflake
+#         >> dedup_snowflake
+#         >> verify_row_counts
+#         >> gx_validate_raw_load
+#         >> dbt_snapshot
+#         >> dbt_run
+#         >> dbt_test
+#         >> post_processing
+#         >> gx_validate_marts
+#         >> spark_demand_features
+#         >> spark_eta_features
+#         >> ml_demand_stockout
+#         >> ml_eta
+#         >> ml_future_demand
+#         >> run_optimization_task
+#         >> run_experimentation_task
+#         >> pipeline_complete
+#     )
