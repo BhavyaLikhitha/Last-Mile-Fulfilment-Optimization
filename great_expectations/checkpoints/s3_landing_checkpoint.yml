@@ -1,0 +1,24 @@
+name: s3_landing_checkpoint
+config_version: 1.0
+class_name: Checkpoint
+run_name_template: "s3_landing_%Y%m%d_%H%M%S"
+validations:
+  - batch_request:
+      datasource_name: s3_pandas
+      data_asset_name: fact_orders_csv
+    expectation_suite_name: s3_orders_suite
+  - batch_request:
+      datasource_name: s3_pandas
+      data_asset_name: fact_deliveries_csv
+    expectation_suite_name: s3_deliveries_suite
+  - batch_request:
+      datasource_name: s3_pandas
+      data_asset_name: fact_inventory_snapshot_csv
+    expectation_suite_name: s3_inventory_suite
+action_list:
+  - name: store_validation_result
+    action:
+      class_name: StoreValidationResultAction
+  - name: update_data_docs
+    action:
+      class_name: UpdateDataDocsAction

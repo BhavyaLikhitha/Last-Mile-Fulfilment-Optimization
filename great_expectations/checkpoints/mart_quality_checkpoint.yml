@@ -1,0 +1,24 @@
+name: mart_quality_checkpoint
+config_version: 1.0
+class_name: Checkpoint
+run_name_template: "mart_quality_%Y%m%d_%H%M%S"
+validations:
+  - batch_request:
+      datasource_name: snowflake_marts
+      data_asset_name: mart_delivery_performance
+    expectation_suite_name: mart_delivery_performance_suite
+  - batch_request:
+      datasource_name: snowflake_marts
+      data_asset_name: mart_cost_optimization
+    expectation_suite_name: mart_cost_optimization_suite
+  - batch_request:
+      datasource_name: snowflake_marts
+      data_asset_name: mart_daily_warehouse_kpis
+    expectation_suite_name: mart_daily_warehouse_kpis_suite
+action_list:
+  - name: store_validation_result
+    action:
+      class_name: StoreValidationResultAction
+  - name: update_data_docs
+    action:
+      class_name: UpdateDataDocsAction
