@@ -7,10 +7,23 @@ authors = [
 ]
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["numpy (==1.26.4)", "pandas (==2.2.1)", "boto3 (==1.34.69)", "python-dotenv (==1.0.1)", "pyarrow (>=14.0.1)", "xgboost (>=3.2.0,<4.0.0)", "lightgbm (>=4.6.0,<5.0.0)", "prophet (>=1.3.0,<2.0.0)", "statsmodels (>=0.14.6,<0.15.0)", "scikit-learn (>=1.8.0,<2.0.0)", "snowflake-connector-python (>=4.3.0,<5.0.0)"]
+dependencies = ["numpy (==1.26.4)", "pandas (==2.2.1)", "boto3 (==1.34.69)", "python-dotenv (==1.0.1)", "pyarrow (>=14.0.1)", "xgboost (>=3.2.0,<4.0.0)", "lightgbm (>=4.6.0,<5.0.0)", "prophet (>=1.3.0,<2.0.0)", "statsmodels (>=0.14.6,<0.15.0)", "scikit-learn (>=1.8.0,<2.0.0)", "snowflake-connector-python (>=4.3.0,<5.0.0)", "pydantic (>=2.0.0,<3.0.0)"]
+# v2 dependencies (uncomment for Kafka + Spark + GX version)
+# "confluent-kafka (>=2.6.0,<3.0.0)", "pyspark (>=3.5.0,<3.6.0)", "great-expectations (>=1.3.0,<2.0.0)"
 
 [tool.poetry]
 package-mode = false
+
+[tool.poetry.group.dev.dependencies]
+ruff = ">=0.3.0"
+pytest = ">=8.0"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

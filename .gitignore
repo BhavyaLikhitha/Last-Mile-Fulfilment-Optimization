@@ -24,3 +24,22 @@ resume points.txt
 # dbt
 dbt/logs/
 dbt/target/
+
+.claude/
+claude.md
+.pytest_cache/
+.ruff_cache/
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.backup
+terraform/.terraform.lock.hcl
+*.tfplan
+terraform/placeholder.zip
+
+# Lambda build artifacts
+lambda_package/
+lambda_deploy.zip
+
+# Great Expectations
+great_expectations/uncommitted/
