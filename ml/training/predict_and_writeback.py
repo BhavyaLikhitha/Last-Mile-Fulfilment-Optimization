@@ -15,17 +15,22 @@ Usage:
 import os
 import sys
 import time
+import warnings
+
 import numpy as np
 import pandas as pd
-import warnings
-warnings.filterwarnings('ignore')
+
+warnings.filterwarnings("ignore")
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from ml.training.save_models import load_model, load_metadata
-from ml.features.demand_features import build_demand_features, get_feature_columns as demand_features
-from ml.features.eta_features import build_eta_features, get_feature_columns as eta_features
-from ml.features.stockout_features import build_stockout_features, get_feature_columns as stockout_features
+from ml.features.demand_features import build_demand_features
+from ml.features.demand_features import get_feature_columns as demand_features
+from ml.features.eta_features import build_eta_features
+from ml.features.eta_features import get_feature_columns as eta_features
+from ml.features.stockout_features import build_stockout_features
+from ml.features.stockout_features import get_feature_columns as stockout_features
+from ml.training.save_models import load_metadata, load_model
 
 # Lookback: extra days pulled for lag feature computation (demand only)
 LOOKBACK_DAYS = 60
@@ -35,19 +40,20 @@ LOOKBACK_DAYS = 60
 #  CONNECTION
 # ─────────────────────────────────────────────────────────────
 
+
 def get_snowflake_connection():
     """Create Snowflake connection from .env credentials."""
-    from dotenv import load_dotenv
     import snowflake.connector
+    from dotenv import load_dotenv
 
     load_dotenv()
 
     return snowflake.connector.connect(
-        account=os.getenv('SNOWFLAKE_ACCOUNT'),
-        user=os.getenv('SNOWFLAKE_USER'),
-        password=os.getenv('SNOWFLAKE_PASSWORD'),
-        database=os.getenv('SNOWFLAKE_DATABASE', 'FULFILLMENT_DB'),
-        warehouse=os.getenv('SNOWFLAKE_WAREHOUSE', 'FULFILLMENT_WH'),
+        account=os.getenv("SNOWFLAKE_ACCOUNT"),
+        user=os.getenv("SNOWFLAKE_USER"),
+        password=os.getenv("SNOWFLAKE_PASSWORD"),
+        database=os.getenv("SNOWFLAKE_DATABASE", "FULFILLMENT_DB"),
+        warehouse=os.getenv("SNOWFLAKE_WAREHOUSE", "FULFILLMENT_WH"),
     )
 
 
@@ -61,6 +67,7 @@ def fast_query(conn, sql: str) -> pd.DataFrame:
         cur.execute(sql)
         try:
             import pyarrow as pa
+
             batches = cur.fetch_arrow_batches()
             table = pa.concat_tables(list(batches))
             df = table.to_pandas()
@@ -75,15 +82,17 @@ def fast_query(conn, sql: str) -> pd.DataFrame:
 def get_max_date(conn, table: str, date_col: str) -> pd.Timestamp:
     """Get max date from a table."""
     result = fast_query(conn, f"SELECT MAX({date_col}) as max_date FROM {table}")
-    return pd.to_datetime(result['max_date'].iloc[0])
+    return pd.to_datetime(result["max_date"].iloc[0])
 
 
 # ─────────────────────────────────────────────────────────────
 #  SHARED MERGE HELPER
 # ─────────────────────────────────────────────────────────────
 
-def bulk_merge(cur, df: pd.DataFrame, temp_table: str, temp_ddl: str,
-               target_table: str, merge_sql: str, temp_path: str) -> int:
+
+def bulk_merge(
+    cur, df: pd.DataFrame, temp_table: str, temp_ddl: str, target_table: str, merge_sql: str, temp_path: str
+) -> int:
     """
     Generic bulk MERGE pattern:
       1. Write df to temp CSV
@@ -95,7 +104,7 @@ def bulk_merge(cur, df: pd.DataFrame, temp_table: str, temp_ddl: str,
     os.makedirs(os.path.dirname(temp_path), exist_ok=True)
     df.to_csv(temp_path, index=False)
 
-    abs_path = os.path.abspath(temp_path).replace('\\', '/')
+    abs_path = os.path.abspath(temp_path).replace("\\", "/")
 
     cur.execute(f"CREATE OR REPLACE TEMPORARY TABLE {temp_table} ({temp_ddl})")
     cur.execute(f"PUT file://{abs_path} @%{temp_table} AUTO_COMPRESS=TRUE OVERWRITE=TRUE")
@@ -119,6 +128,7 @@ def bulk_merge(cur, df: pd.DataFrame, temp_table: str, temp_ddl: str,
 #  DEMAND FORECAST
 # ─────────────────────────────────────────────────────────────
 
+
 def predict_demand():
     """
     Generate demand forecasts and bulk MERGE into mart_daily_product_kpis.
@@ -129,9 +139,9 @@ def predict_demand():
     print("=" * 60)
     start = time.time()
 
-    model = load_model('demand_best')
-    meta = load_metadata('demand_best')
-    features = meta.get('features', demand_features())
+    model = load_model("demand_best")
+    meta = load_metadata("demand_best")
+    features = meta.get("features", demand_features())
     print(f"  Model  : {meta.get('model_name', 'unknown')}")
     print(f"  Metrics: {meta.get('metrics', {})}")
 
@@ -140,16 +150,19 @@ def predict_demand():
 
     # Incremental: only score rows not yet predicted
     # Pull from last_scored - LOOKBACK_DAYS so lag features are valid for new rows
-    last_scored_result = fast_query(conn, """
+    last_scored_result = fast_query(
+        conn,
+        """
         SELECT COALESCE(MAX(DATE), '2022-01-01'::DATE) as last_date
         FROM MARTS.MART_DAILY_PRODUCT_KPIS
         WHERE DEMAND_FORECAST IS NOT NULL
           AND (IS_FORECAST = FALSE OR IS_FORECAST IS NULL)
-    """)
-    last_scored = last_scored_result['last_date'].iloc[0]
+    """,
+    )
+    last_scored = last_scored_result["last_date"].iloc[0]
     last_scored = pd.Timestamp(last_scored)
 
-    max_date  = get_max_date(conn, "MARTS.MART_DAILY_PRODUCT_KPIS WHERE IS_FORECAST = FALSE", 'DATE')
+    max_date = get_max_date(conn, "MARTS.MART_DAILY_PRODUCT_KPIS WHERE IS_FORECAST = FALSE", "DATE")
     # Start scoring from the day after last scored date
     score_from = last_scored + pd.Timedelta(days=1)
     # Pull extra lookback so lag features are populated for first new rows
@@ -164,7 +177,9 @@ def predict_demand():
     print(f"  Last scored date   : {last_scored.date()}")
     print(f"  Pull from          : {pull_start.date()} (includes {LOOKBACK_DAYS}d lookback for lag features)")
 
-    product_kpis = fast_query(conn, f"SELECT * FROM MARTS.MART_DAILY_PRODUCT_KPIS WHERE DATE >= '{pull_start.date()}' AND IS_FORECAST = FALSE")
+    product_kpis = fast_query(
+        conn, f"SELECT * FROM MARTS.MART_DAILY_PRODUCT_KPIS WHERE DATE >= '{pull_start.date()}' AND IS_FORECAST = FALSE"
+    )
 
     dates = fast_query(conn, "SELECT * FROM STAGING.STG_DATES")
 
@@ -179,9 +194,9 @@ def predict_demand():
     print("  Building features...")
     df = build_demand_features(product_kpis, dates, products)
 
-    df['date'] = pd.to_datetime(df['date'])
+    df["date"] = pd.to_datetime(df["date"])
     # Only score new rows — exclude lookback buffer rows already scored
-    df_predict = df[df['date'] >= score_from].copy()
+    df_predict = df[df["date"] >= score_from].copy()
 
     if len(df_predict) == 0:
         print("  No rows in prediction window after feature engineering. Skipping.")
@@ -192,15 +207,15 @@ def predict_demand():
     available_features = [f for f in features if f in df_predict.columns]
     X = df_predict[available_features].fillna(0)
 
-    df_predict['demand_forecast'] = np.maximum(model.predict(X), 0).round(2)
-    df_predict['forecast_error'] = (df_predict['total_units_sold'] - df_predict['demand_forecast']).round(2)
+    df_predict["demand_forecast"] = np.maximum(model.predict(X), 0).round(2)
+    df_predict["forecast_error"] = (df_predict["total_units_sold"] - df_predict["demand_forecast"]).round(2)
 
-    mask = df_predict['total_units_sold'] > 0
-    mape = np.mean(np.abs(df_predict.loc[mask, 'forecast_error'] / df_predict.loc[mask, 'total_units_sold'])) * 100
+    mask = df_predict["total_units_sold"] > 0
+    mape = np.mean(np.abs(df_predict.loc[mask, "forecast_error"] / df_predict.loc[mask, "total_units_sold"])) * 100
     print(f"  MAPE: {mape:.2f}%")
 
-    writeback = df_predict[['date', 'product_id', 'demand_forecast', 'forecast_error']].copy()
-    writeback['date'] = writeback['date'].dt.strftime('%Y-%m-%d')
+    writeback = df_predict[["date", "product_id", "demand_forecast", "forecast_error"]].copy()
+    writeback["date"] = writeback["date"].dt.strftime("%Y-%m-%d")
 
     cur.execute("USE SCHEMA MARTS")
     rows_updated = bulk_merge(
@@ -217,12 +232,16 @@ def predict_demand():
                 t.DEMAND_FORECAST = s.DEMAND_FORECAST,
                 t.FORECAST_ERROR  = s.FORECAST_ERROR
         """,
-        temp_path='ml/results/_temp_demand_predictions.csv'
+        temp_path="ml/results/_temp_demand_predictions.csv",
     )
     conn.commit()
 
-    print(f"\n  Sample predictions:")
-    print(df_predict[['date', 'product_id', 'total_units_sold', 'demand_forecast', 'forecast_error']].tail(10).to_string(index=False))
+    print("\n  Sample predictions:")
+    print(
+        df_predict[["date", "product_id", "total_units_sold", "demand_forecast", "forecast_error"]]
+        .tail(10)
+        .to_string(index=False)
+    )
 
     cur.close()
     conn.close()
@@ -233,6 +252,7 @@ def predict_demand():
 # ─────────────────────────────────────────────────────────────
 #  ETA PREDICTION
 # ─────────────────────────────────────────────────────────────
+
 
 def predict_eta():
     """
@@ -248,9 +268,9 @@ def predict_eta():
     print("=" * 60)
     start = time.time()
 
-    model = load_model('eta_best')
-    meta = load_metadata('eta_best')
-    features = meta.get('features', eta_features())
+    model = load_model("eta_best")
+    meta = load_metadata("eta_best")
+    features = meta.get("features", eta_features())
     print(f"  Model: {meta.get('model_name', 'unknown')}")
     print(f"  Metrics: {meta.get('metrics', {})}")
 
@@ -263,15 +283,18 @@ def predict_eta():
     print(f"  Loaded {len(dates):,} date rows")
 
     # Incremental: find last scored date and only process new chunks
-    last_eta_scored = fast_query(conn, """
+    last_eta_scored = fast_query(
+        conn,
+        """
         SELECT COALESCE(MAX(DATE), '2022-01-01'::DATE) as last_date
         FROM MARTS.MART_DELIVERY_PERFORMANCE
         WHERE PREDICTED_ETA IS NOT NULL
-    """)['last_date'].iloc[0]
+    """,
+    )["last_date"].iloc[0]
     last_eta_scored = pd.Timestamp(last_eta_scored)
-    score_eta_from  = last_eta_scored + pd.Timedelta(days=1)
+    score_eta_from = last_eta_scored + pd.Timedelta(days=1)
 
-    max_eta_date = get_max_date(conn, 'INTERMEDIATE.INT_DELIVERY_ENRICHED', 'DELIVERY_DATE')
+    max_eta_date = get_max_date(conn, "INTERMEDIATE.INT_DELIVERY_ENRICHED", "DELIVERY_DATE")
 
     if score_eta_from > max_eta_date:
         print(f"\n  All ETA rows already scored up to {last_eta_scored.date()}. Nothing to do.")
@@ -284,11 +307,8 @@ def predict_eta():
     chunk_start = score_eta_from
     year_chunks = []
     while chunk_start <= max_eta_date:
-        chunk_end = min(
-            pd.Timestamp(f"{chunk_start.year}-12-31"),
-            max_eta_date
-        )
-        year_chunks.append((chunk_start.strftime('%Y-%m-%d'), chunk_end.strftime('%Y-%m-%d')))
+        chunk_end = min(pd.Timestamp(f"{chunk_start.year}-12-31"), max_eta_date)
+        year_chunks.append((chunk_start.strftime("%Y-%m-%d"), chunk_end.strftime("%Y-%m-%d")))
         chunk_start = chunk_end + pd.Timedelta(days=1)
 
     total_deliveries_scored = 0
@@ -302,20 +322,23 @@ def predict_eta():
         print(f"\n  ── Chunk {i}/{len(year_chunks)}: {chunk_start} → {chunk_end} ──")
 
         # Pull deliveries for this chunk
-        print(f"  Pulling deliveries from Snowflake...")
-        chunk_df = fast_query(conn, f"SELECT * FROM INTERMEDIATE.INT_DELIVERY_ENRICHED WHERE DELIVERY_DATE >= '{chunk_start}' AND DELIVERY_DATE <= '{chunk_end}'")
+        print("  Pulling deliveries from Snowflake...")
+        chunk_df = fast_query(
+            conn,
+            f"SELECT * FROM INTERMEDIATE.INT_DELIVERY_ENRICHED WHERE DELIVERY_DATE >= '{chunk_start}' AND DELIVERY_DATE <= '{chunk_end}'",
+        )
         print(f"  Loaded {len(chunk_df):,} deliveries")
 
         if len(chunk_df) == 0:
-            print(f"  No data for this chunk. Skipping.")
+            print("  No data for this chunk. Skipping.")
             continue
 
         # Build features
-        print(f"  Building features...")
+        print("  Building features...")
         df = build_eta_features(chunk_df, dates)
 
         if len(df) == 0:
-            print(f"  No delivered orders after feature filtering. Skipping.")
+            print("  No delivered orders after feature filtering. Skipping.")
             continue
 
         # Score
@@ -323,33 +346,28 @@ def predict_eta():
         available_features = [f for f in features if f in df.columns]
         X = df[available_features].fillna(0)
 
-        df['predicted_eta'] = np.maximum(model.predict(X), 1).round(2)
-        df['eta_error'] = (df['actual_delivery_minutes'] - df['predicted_eta']).round(2)
+        df["predicted_eta"] = np.maximum(model.predict(X), 1).round(2)
+        df["eta_error"] = (df["actual_delivery_minutes"] - df["predicted_eta"]).round(2)
 
         # Chunk MAPE
-        mask = df['actual_delivery_minutes'] > 0
-        chunk_mape = np.mean(
-            np.abs(df.loc[mask, 'eta_error'] / df.loc[mask, 'actual_delivery_minutes'])
-        ) * 100
+        mask = df["actual_delivery_minutes"] > 0
+        chunk_mape = np.mean(np.abs(df.loc[mask, "eta_error"] / df.loc[mask, "actual_delivery_minutes"])) * 100
         all_mapes.append(chunk_mape)
         print(f"  Chunk MAPE: {chunk_mape:.2f}%")
 
         # Aggregate to warehouse × day grain
-        date_col = 'delivery_date' if 'delivery_date' in df.columns else 'order_date'
-        warehouse_col = 'warehouse_id' if 'warehouse_id' in df.columns else 'assigned_warehouse_id'
+        date_col = "delivery_date" if "delivery_date" in df.columns else "order_date"
+        warehouse_col = "warehouse_id" if "warehouse_id" in df.columns else "assigned_warehouse_id"
 
         agg = (
             df.groupby([date_col, warehouse_col])
-            .agg(
-                predicted_eta=('predicted_eta', 'mean'),
-                eta_error=('eta_error', 'mean')
-            )
+            .agg(predicted_eta=("predicted_eta", "mean"), eta_error=("eta_error", "mean"))
             .reset_index()
-            .rename(columns={date_col: 'date', warehouse_col: 'warehouse_id'})
+            .rename(columns={date_col: "date", warehouse_col: "warehouse_id"})
         )
-        agg['predicted_eta'] = agg['predicted_eta'].round(2)
-        agg['eta_error'] = agg['eta_error'].round(2)
-        agg['date'] = pd.to_datetime(agg['date']).dt.strftime('%Y-%m-%d')
+        agg["predicted_eta"] = agg["predicted_eta"].round(2)
+        agg["eta_error"] = agg["eta_error"].round(2)
+        agg["date"] = pd.to_datetime(agg["date"]).dt.strftime("%Y-%m-%d")
         print(f"  Aggregated to {len(agg):,} warehouse × day rows")
 
         # Merge this chunk into mart
@@ -367,7 +385,7 @@ def predict_eta():
                     t.PREDICTED_ETA = s.PREDICTED_ETA,
                     t.ETA_ERROR      = s.ETA_ERROR
             """,
-            temp_path='ml/results/_temp_eta_predictions.csv'
+            temp_path="ml/results/_temp_eta_predictions.csv",
         )
         conn.commit()
 
@@ -389,6 +407,7 @@ def predict_eta():
 #  STOCKOUT RISK
 # ─────────────────────────────────────────────────────────────
 
+
 def predict_stockout():
     """
     Score current inventory for stockout risk and bulk MERGE into mart_daily_product_kpis.
@@ -403,9 +422,9 @@ def predict_stockout():
     print("=" * 60)
     start = time.time()
 
-    model = load_model('stockout_best')
-    meta = load_metadata('stockout_best')
-    features = meta.get('features', stockout_features())
+    model = load_model("stockout_best")
+    meta = load_metadata("stockout_best")
+    features = meta.get("features", stockout_features())
     print(f"  Model: {meta.get('model_name', 'unknown')}")
 
     conn = get_snowflake_connection()
@@ -413,17 +432,20 @@ def predict_stockout():
 
     # Incremental: only score rows not yet predicted
     # Use INT_INVENTORY_ENRICHED max date as the ceiling
-    max_date = get_max_date(conn, "INTERMEDIATE.INT_INVENTORY_ENRICHED", 'SNAPSHOT_DATE')
+    max_date = get_max_date(conn, "INTERMEDIATE.INT_INVENTORY_ENRICHED", "SNAPSHOT_DATE")
 
-    last_scored_result = fast_query(conn, """
+    last_scored_result = fast_query(
+        conn,
+        """
         SELECT COALESCE(MAX(DATE), '2022-01-01'::DATE) as last_date
         FROM MARTS.MART_DAILY_PRODUCT_KPIS
         WHERE STOCKOUT_RISK_SCORE IS NOT NULL
           AND (IS_FORECAST = FALSE OR IS_FORECAST IS NULL)
-    """)
-    last_scored = pd.Timestamp(last_scored_result['last_date'].iloc[0])
-    score_from  = last_scored + pd.Timedelta(days=1)
-    pull_start  = last_scored - pd.Timedelta(days=60)
+    """,
+    )
+    last_scored = pd.Timestamp(last_scored_result["last_date"].iloc[0])
+    score_from = last_scored + pd.Timedelta(days=1)
+    pull_start = last_scored - pd.Timedelta(days=60)
 
     if score_from > max_date:
         print(f"\n  All rows already scored up to {last_scored.date()}. Nothing to do.")
@@ -434,7 +456,9 @@ def predict_stockout():
     print(f"  Last scored date   : {last_scored.date()}")
     print(f"  Pull from          : {pull_start.date()} (includes 60d lookback for lag features)")
 
-    inventory = fast_query(conn, f"SELECT * FROM INTERMEDIATE.INT_INVENTORY_ENRICHED WHERE SNAPSHOT_DATE >= '{pull_start.date()}'")
+    inventory = fast_query(
+        conn, f"SELECT * FROM INTERMEDIATE.INT_INVENTORY_ENRICHED WHERE SNAPSHOT_DATE >= '{pull_start.date()}'"
+    )
     print(f"  Loaded {len(inventory):,} inventory rows")
 
     dates = fast_query(conn, "SELECT * FROM STAGING.STG_DATES")
@@ -449,9 +473,9 @@ def predict_stockout():
     print("  Building features...")
     df = build_stockout_features(inventory, dates, products)
 
-    df['snapshot_date'] = pd.to_datetime(df['snapshot_date'])
+    df["snapshot_date"] = pd.to_datetime(df["snapshot_date"])
     # Only score new rows beyond what was already predicted
-    df_predict = df[df['snapshot_date'] >= score_from].copy()
+    df_predict = df[df["snapshot_date"] >= score_from].copy()
 
     if len(df_predict) == 0:
         print("  No rows in prediction window. Skipping.")
@@ -462,38 +486,37 @@ def predict_stockout():
     available_features = [f for f in features if f in df_predict.columns]
     X = df_predict[available_features].fillna(0)
 
-    if hasattr(model, 'predict_proba'):
-        df_predict['stockout_risk_score'] = model.predict_proba(X)[:, 1].round(4)
+    if hasattr(model, "predict_proba"):
+        df_predict["stockout_risk_score"] = model.predict_proba(X)[:, 1].round(4)
     else:
-        df_predict['stockout_risk_score'] = model.predict(X)
+        df_predict["stockout_risk_score"] = model.predict(X)
 
     # Risk distribution summary
-    high   = (df_predict['stockout_risk_score'] >= 0.7).sum()
-    medium = ((df_predict['stockout_risk_score'] >= 0.3) & (df_predict['stockout_risk_score'] < 0.7)).sum()
-    low    = (df_predict['stockout_risk_score'] < 0.3).sum()
+    high = (df_predict["stockout_risk_score"] >= 0.7).sum()
+    medium = ((df_predict["stockout_risk_score"] >= 0.3) & (df_predict["stockout_risk_score"] < 0.7)).sum()
+    low = (df_predict["stockout_risk_score"] < 0.3).sum()
     n = len(df_predict)
-    print(f"\n  Risk distribution:")
-    print(f"    High   (≥0.7) : {high:>8,} ({high/n*100:.1f}%)")
-    print(f"    Medium (0.3–0.7): {medium:>8,} ({medium/n*100:.1f}%)")
-    print(f"    Low    (<0.3) : {low:>8,} ({low/n*100:.1f}%)")
+    print("\n  Risk distribution:")
+    print(f"    High   (≥0.7) : {high:>8,} ({high / n * 100:.1f}%)")
+    print(f"    Medium (0.3–0.7): {medium:>8,} ({medium / n * 100:.1f}%)")
+    print(f"    Low    (<0.3) : {low:>8,} ({low / n * 100:.1f}%)")
 
     # Aggregate to product × day grain (MAX risk score across warehouses)
     # mart_daily_product_kpis is product × day, not product × warehouse × day
     agg = (
-        df_predict.groupby(['snapshot_date', 'product_id'])
-        ['stockout_risk_score']
+        df_predict.groupby(["snapshot_date", "product_id"])["stockout_risk_score"]
         .max()
         .reset_index()
-        .rename(columns={'snapshot_date': 'date'})
+        .rename(columns={"snapshot_date": "date"})
     )
-    agg['stockout_risk_score'] = agg['stockout_risk_score'].round(4)
-    agg['date'] = agg['date'].dt.strftime('%Y-%m-%d')
+    agg["stockout_risk_score"] = agg["stockout_risk_score"].round(4)
+    agg["date"] = agg["date"].dt.strftime("%Y-%m-%d")
 
     print(f"\n  Aggregated to {len(agg):,} product × day rows for mart")
 
-    print(f"\n  Top 10 highest risk products:")
-    top = df_predict.nlargest(10, 'stockout_risk_score')[
-        ['snapshot_date', 'warehouse_id', 'product_id', 'closing_stock', 'days_of_supply', 'stockout_risk_score']
+    print("\n  Top 10 highest risk products:")
+    top = df_predict.nlargest(10, "stockout_risk_score")[
+        ["snapshot_date", "warehouse_id", "product_id", "closing_stock", "days_of_supply", "stockout_risk_score"]
     ]
     print(top.to_string(index=False))
 
@@ -511,7 +534,7 @@ def predict_stockout():
             WHEN MATCHED THEN UPDATE SET
                 t.STOCKOUT_RISK_SCORE = s.STOCKOUT_RISK_SCORE
         """,
-        temp_path='ml/results/_temp_stockout_risk.csv'
+        temp_path="ml/results/_temp_stockout_risk.csv",
     )
     conn.commit()
     cur.close()
@@ -524,6 +547,7 @@ def predict_stockout():
 # ─────────────────────────────────────────────────────────────
 #  FUTURE DEMAND FORECAST
 # ─────────────────────────────────────────────────────────────
+
 
 def predict_future_demand(horizon_days: int = 180):
     """
@@ -551,23 +575,19 @@ def predict_future_demand(horizon_days: int = 180):
     print("=" * 60)
     start = time.time()
 
-    model = load_model('demand_best')
-    meta  = load_metadata('demand_best')
-    features = meta.get('features', demand_features())
+    model = load_model("demand_best")
+    meta = load_metadata("demand_best")
+    features = meta.get("features", demand_features())
     print(f"  Model  : {meta.get('model_name', 'unknown')}")
     print(f"  Horizon: {horizon_days} days")
 
     conn = get_snowflake_connection()
-    cur  = conn.cursor()
+    cur = conn.cursor()
 
     # Last historical date — forecast starts the day after
-    hist_max = get_max_date(
-        conn,
-        "MARTS.MART_DAILY_PRODUCT_KPIS WHERE IS_FORECAST = FALSE",
-        'DATE'
-    )
+    hist_max = get_max_date(conn, "MARTS.MART_DAILY_PRODUCT_KPIS WHERE IS_FORECAST = FALSE", "DATE")
     forecast_start = hist_max + pd.Timedelta(days=1)
-    forecast_end   = hist_max + pd.Timedelta(days=horizon_days)
+    forecast_end = hist_max + pd.Timedelta(days=horizon_days)
 
     print(f"\n  Historical data ends : {hist_max.date()}")
     print(f"  Forecast window      : {forecast_start.date()} → {forecast_end.date()}")
@@ -581,7 +601,7 @@ def predict_future_demand(horizon_days: int = 180):
         SELECT * FROM MARTS.MART_DAILY_PRODUCT_KPIS
         WHERE DATE >= '{seed_start.date()}'
           AND IS_FORECAST = FALSE
-        """
+        """,
     )
     print(f"  Loaded {len(seed_df):,} seed rows")
 
@@ -589,34 +609,44 @@ def predict_future_demand(horizon_days: int = 180):
     print("  Loading product attributes from stg_products...")
     products = fast_query(
         conn,
-        "SELECT product_id, category, price_tier, subcategory, cost_price, selling_price, weight_kg, is_perishable FROM STAGING.STG_PRODUCTS WHERE IS_CURRENT = TRUE"
+        "SELECT product_id, category, price_tier, subcategory, cost_price, selling_price, weight_kg, is_perishable FROM STAGING.STG_PRODUCTS WHERE IS_CURRENT = TRUE",
     )
     print(f"  Loaded {len(products):,} products")
 
     # ── Build future date spine ──
-    future_dates = pd.date_range(start=forecast_start, end=forecast_end, freq='D')
-    product_ids  = products['product_id'].unique()
+    future_dates = pd.date_range(start=forecast_start, end=forecast_end, freq="D")
+    product_ids = products["product_id"].unique()
 
-    print(f"\n  Building future date spine...")
+    print("\n  Building future date spine...")
     print(f"  {len(future_dates)} days × {len(product_ids)} products = {len(future_dates) * len(product_ids):,} rows")
 
     # Cross join: every product × every future date
-    future_spine = pd.MultiIndex.from_product(
-        [future_dates, product_ids], names=['date', 'product_id']
-    ).to_frame(index=False)
+    future_spine = pd.MultiIndex.from_product([future_dates, product_ids], names=["date", "product_id"]).to_frame(
+        index=False
+    )
 
     # Attach product attributes
-    future_spine = future_spine.merge(products, on='product_id', how='left')
+    future_spine = future_spine.merge(products, on="product_id", how="left")
 
     # Fill metric columns with NaN for future spine.
     # total_units_sold must be NaN (not 0) — lag features shift this column forward,
     # and zeros would corrupt the forecast by making the model think demand dropped to 0.
     # The lag features for the first future days will be seeded from the historical rows
     # in 'combined', so NaN here just means "no actuals yet".
-    for col in ['total_units_sold', 'total_revenue', 'stockout_count',
-                'avg_closing_stock', 'inventory_turnover', 'avg_days_of_supply',
-                'total_holding_cost', 'total_inventory_value', 'demand_volatility',
-                'demand_forecast', 'forecast_error', 'stockout_risk_score']:
+    for col in [
+        "total_units_sold",
+        "total_revenue",
+        "stockout_count",
+        "avg_closing_stock",
+        "inventory_turnover",
+        "avg_days_of_supply",
+        "total_holding_cost",
+        "total_inventory_value",
+        "demand_volatility",
+        "demand_forecast",
+        "forecast_error",
+        "stockout_risk_score",
+    ]:
         future_spine[col] = None
 
     # ── Combine seed + future for feature engineering ──
@@ -626,45 +656,62 @@ def predict_future_demand(horizon_days: int = 180):
     # specifically the mart metric columns. Extra columns like is_forecast,
     # forecast_horizon in seed_df would cause schema mismatches.
     core_cols = [
-        'date', 'product_id', 'category', 'price_tier',
-        'total_units_sold', 'total_revenue', 'stockout_count',
-        'avg_closing_stock', 'inventory_turnover', 'avg_days_of_supply',
-        'total_holding_cost', 'total_inventory_value',
-        'demand_forecast', 'forecast_error', 'demand_volatility', 'stockout_risk_score'
+        "date",
+        "product_id",
+        "category",
+        "price_tier",
+        "total_units_sold",
+        "total_revenue",
+        "stockout_count",
+        "avg_closing_stock",
+        "inventory_turnover",
+        "avg_days_of_supply",
+        "total_holding_cost",
+        "total_inventory_value",
+        "demand_forecast",
+        "forecast_error",
+        "demand_volatility",
+        "stockout_risk_score",
     ]
     seed_core = seed_df[[c for c in core_cols if c in seed_df.columns]].copy()
     future_core = future_spine[[c for c in core_cols if c in future_spine.columns]].copy()
 
     combined = pd.concat([seed_core, future_core], ignore_index=True)
-    combined['date'] = pd.to_datetime(combined['date'])
-    combined = combined.sort_values(['product_id', 'date']).reset_index(drop=True)
+    combined["date"] = pd.to_datetime(combined["date"])
+    combined = combined.sort_values(["product_id", "date"]).reset_index(drop=True)
 
     # Load dates dimension for calendar features
     dates_dim = fast_query(conn, "SELECT * FROM STAGING.STG_DATES")
-    dates_dim['date'] = pd.to_datetime(dates_dim['date'])
+    dates_dim["date"] = pd.to_datetime(dates_dim["date"])
 
     # stg_dates only covers Feb 2022 → Feb 2025.
     # Future dates (Feb 2025 → Aug 2025) don't exist in it — extend it synthetically.
-    last_hist_date = dates_dim['date'].max()
+    last_hist_date = dates_dim["date"].max()
     if forecast_end > last_hist_date:
-        future_date_range = pd.date_range(
-            start=last_hist_date + pd.Timedelta(days=1),
-            end=forecast_end,
-            freq='D'
+        future_date_range = pd.date_range(start=last_hist_date + pd.Timedelta(days=1), end=forecast_end, freq="D")
+        future_dates_df = pd.DataFrame({"date": future_date_range})
+        future_dates_df["day_of_week_num"] = future_dates_df["date"].dt.dayofweek + 1
+        future_dates_df["month"] = future_dates_df["date"].dt.month
+        future_dates_df["quarter"] = future_dates_df["date"].dt.quarter
+        future_dates_df["year"] = future_dates_df["date"].dt.year
+        future_dates_df["is_weekend"] = future_dates_df["date"].dt.dayofweek >= 5
+        future_dates_df["is_holiday"] = False  # conservative — no holiday data for future
+        future_dates_df["season"] = future_dates_df["month"].map(
+            {
+                12: "Winter",
+                1: "Winter",
+                2: "Winter",
+                3: "Spring",
+                4: "Spring",
+                5: "Spring",
+                6: "Summer",
+                7: "Summer",
+                8: "Summer",
+                9: "Fall",
+                10: "Fall",
+                11: "Fall",
+            }
         )
-        future_dates_df = pd.DataFrame({'date': future_date_range})
-        future_dates_df['day_of_week_num'] = future_dates_df['date'].dt.dayofweek + 1
-        future_dates_df['month']           = future_dates_df['date'].dt.month
-        future_dates_df['quarter']         = future_dates_df['date'].dt.quarter
-        future_dates_df['year']            = future_dates_df['date'].dt.year
-        future_dates_df['is_weekend']      = future_dates_df['date'].dt.dayofweek >= 5
-        future_dates_df['is_holiday']      = False  # conservative — no holiday data for future
-        future_dates_df['season']          = future_dates_df['month'].map({
-            12: 'Winter', 1: 'Winter', 2: 'Winter',
-            3: 'Spring',  4: 'Spring', 5: 'Spring',
-            6: 'Summer',  7: 'Summer', 8: 'Summer',
-            9: 'Fall',   10: 'Fall',  11: 'Fall'
-        })
         dates_dim = pd.concat([dates_dim, future_dates_df], ignore_index=True)
         print(f"  Extended dates dimension to {forecast_end.date()} (+{len(future_dates_df)} rows)")
 
@@ -672,16 +719,16 @@ def predict_future_demand(horizon_days: int = 180):
     df_features = build_demand_features(combined, dates_dim, products)
 
     # Keep only future rows for scoring
-    df_features['date'] = pd.to_datetime(df_features['date'])
-    df_future = df_features[df_features['date'] >= forecast_start].copy()
+    df_features["date"] = pd.to_datetime(df_features["date"])
+    df_future = df_features[df_features["date"] >= forecast_start].copy()
 
     # build_demand_features drops rows where demand_lag_28d is NaN.
     # For future rows, lag features beyond the seed window will be NaN.
     # Fill with rolling averages as a reasonable substitute — the rolling avg
     # captures recent trend and is a standard imputation for future lag features.
-    lag_cols = [c for c in df_future.columns if c.startswith('demand_lag_')]
+    lag_cols = [c for c in df_future.columns if c.startswith("demand_lag_")]
     for col in lag_cols:
-        fallback = 'demand_rolling_avg_30d' if 'demand_rolling_avg_30d' in df_future.columns else None
+        fallback = "demand_rolling_avg_30d" if "demand_rolling_avg_30d" in df_future.columns else None
         if fallback:
             df_future[col] = df_future[col].fillna(df_future[fallback])
 
@@ -690,39 +737,33 @@ def predict_future_demand(horizon_days: int = 180):
     if len(df_future) == 0:
         print("  WARNING: All future rows dropped by dropna — using spine directly")
         df_future = future_spine.copy()
-        df_future['date'] = pd.to_datetime(df_future['date'])
+        df_future["date"] = pd.to_datetime(df_future["date"])
 
     print(f"  Scoring {len(df_future):,} future rows")
 
     # ── Score ──
     available_features = [f for f in features if f in df_future.columns]
     X = df_future[available_features].fillna(0)
-    df_future['demand_forecast'] = np.maximum(model.predict(X), 0).round(2)
+    df_future["demand_forecast"] = np.maximum(model.predict(X), 0).round(2)
 
     # ── Assign forecast_horizon bucket ──
-    days_out = (df_future['date'] - hist_max).dt.days
-    df_future['forecast_horizon'] = pd.cut(
-        days_out,
-        bins=[0, 30, 60, 90, horizon_days],
-        labels=[30, 60, 90, 180]
+    days_out = (df_future["date"] - hist_max).dt.days
+    df_future["forecast_horizon"] = pd.cut(
+        days_out, bins=[0, 30, 60, 90, horizon_days], labels=[30, 60, 90, 180]
     ).astype(int)
 
-    df_future['is_forecast']      = True
-    df_future['forecast_error']   = None
-    df_future['total_units_sold'] = None
+    df_future["is_forecast"] = True
+    df_future["forecast_error"] = None
+    df_future["total_units_sold"] = None
 
     # ── Sample preview ──
-    print(f"\n  Sample future predictions:")
-    print(
-        df_future[['date', 'product_id', 'demand_forecast', 'forecast_horizon']]
-        .head(10)
-        .to_string(index=False)
-    )
+    print("\n  Sample future predictions:")
+    print(df_future[["date", "product_id", "demand_forecast", "forecast_horizon"]].head(10).to_string(index=False))
 
     # Horizon distribution
-    print(f"\n  Horizon distribution:")
+    print("\n  Horizon distribution:")
     for h in [30, 60, 90, 180]:
-        n = (df_future['forecast_horizon'] == h).sum()
+        n = (df_future["forecast_horizon"] == h).sum()
         print(f"    {h:>3}d bucket: {n:>8,} rows")
 
     # ── Write to Snowflake ──
@@ -731,51 +772,65 @@ def predict_future_demand(horizon_days: int = 180):
     # rows for today's forecast run. Re-running on the same day is idempotent.
 
     # price_tier is dropped by build_demand_features — re-attach from products
-    price_tier_map = products[['product_id', 'price_tier']].drop_duplicates()
-    df_future = df_future.merge(price_tier_map, on='product_id', how='left')
+    price_tier_map = products[["product_id", "price_tier"]].drop_duplicates()
+    df_future = df_future.merge(price_tier_map, on="product_id", how="left")
 
     # forecast_generated_date = today — identifies this forecast vintage
     # Allows multiple vintages to coexist in the mart for comparison in Power BI
     from datetime import date as date_cls
-    forecast_generated_date = date_cls.today().strftime('%Y-%m-%d')
+
+    forecast_generated_date = date_cls.today().strftime("%Y-%m-%d")
 
     cur.execute("USE SCHEMA MARTS")
     print(f"\n  Writing forecast vintage: {forecast_generated_date}")
 
     # Prepare writeback dataframe — only columns that exist in the mart
-    writeback = df_future[[
-        'date', 'product_id', 'category', 'price_tier',
-        'demand_forecast', 'forecast_horizon', 'is_forecast'
-    ]].copy()
-    writeback['date'] = writeback['date'].dt.strftime('%Y-%m-%d')
-    writeback['forecast_error']          = None
-    writeback['total_units_sold']        = None
-    writeback['total_revenue']           = None
-    writeback['stockout_count']          = None
-    writeback['avg_closing_stock']       = None
-    writeback['inventory_turnover']      = None
-    writeback['avg_days_of_supply']      = None
-    writeback['total_holding_cost']      = None
-    writeback['total_inventory_value']   = None
-    writeback['demand_volatility']       = None
-    writeback['stockout_risk_score']     = None
-    writeback['forecast_generated_date'] = forecast_generated_date
+    writeback = df_future[
+        ["date", "product_id", "category", "price_tier", "demand_forecast", "forecast_horizon", "is_forecast"]
+    ].copy()
+    writeback["date"] = writeback["date"].dt.strftime("%Y-%m-%d")
+    writeback["forecast_error"] = None
+    writeback["total_units_sold"] = None
+    writeback["total_revenue"] = None
+    writeback["stockout_count"] = None
+    writeback["avg_closing_stock"] = None
+    writeback["inventory_turnover"] = None
+    writeback["avg_days_of_supply"] = None
+    writeback["total_holding_cost"] = None
+    writeback["total_inventory_value"] = None
+    writeback["demand_volatility"] = None
+    writeback["stockout_risk_score"] = None
+    writeback["forecast_generated_date"] = forecast_generated_date
 
     # Reorder to match mart column order
-    writeback = writeback[[
-        'date', 'product_id', 'category', 'price_tier',
-        'total_units_sold', 'total_revenue', 'stockout_count',
-        'avg_closing_stock', 'inventory_turnover', 'avg_days_of_supply',
-        'total_holding_cost', 'total_inventory_value',
-        'demand_forecast', 'forecast_error', 'demand_volatility',
-        'stockout_risk_score', 'is_forecast', 'forecast_horizon',
-        'forecast_generated_date'
-    ]]
+    writeback = writeback[
+        [
+            "date",
+            "product_id",
+            "category",
+            "price_tier",
+            "total_units_sold",
+            "total_revenue",
+            "stockout_count",
+            "avg_closing_stock",
+            "inventory_turnover",
+            "avg_days_of_supply",
+            "total_holding_cost",
+            "total_inventory_value",
+            "demand_forecast",
+            "forecast_error",
+            "demand_volatility",
+            "stockout_risk_score",
+            "is_forecast",
+            "forecast_horizon",
+            "forecast_generated_date",
+        ]
+    ]
 
-    temp_path = 'ml/results/_temp_future_demand.csv'
-    os.makedirs('ml/results', exist_ok=True)
+    temp_path = "ml/results/_temp_future_demand.csv"
+    os.makedirs("ml/results", exist_ok=True)
     writeback.to_csv(temp_path, index=False)
-    abs_path = os.path.abspath(temp_path).replace('\\', '/')
+    abs_path = os.path.abspath(temp_path).replace("\\", "/")
 
     cur.execute("""
         CREATE OR REPLACE TEMPORARY TABLE _temp_future_demand (
@@ -859,8 +914,9 @@ def predict_future_demand(horizon_days: int = 180):
 #  ENTRY POINT
 # ─────────────────────────────────────────────────────────────
 
+
 def run_writeback(phases: list = None):
-    all_phases = ['demand', 'eta', 'stockout', 'future_demand']
+    all_phases = ["demand", "eta", "stockout", "future_demand"]
     phases = phases or all_phases
 
     print("=" * 60)
@@ -870,16 +926,16 @@ def run_writeback(phases: list = None):
 
     total_start = time.time()
 
-    if 'demand' in phases:
+    if "demand" in phases:
         predict_demand()
 
-    if 'eta' in phases:
+    if "eta" in phases:
         predict_eta()
 
-    if 'stockout' in phases:
+    if "stockout" in phases:
         predict_stockout()
 
-    if 'future_demand' in phases:
+    if "future_demand" in phases:
         predict_future_demand(horizon_days=180)
 
     print(f"\n{'=' * 60}")
@@ -890,13 +946,13 @@ def run_writeback(phases: list = None):
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description='ML Prediction & Writeback')
+    parser = argparse.ArgumentParser(description="ML Prediction & Writeback")
     parser.add_argument(
-        '--phase',
-        nargs='+',
-        choices=['demand', 'eta', 'stockout', 'future_demand'],
+        "--phase",
+        nargs="+",
+        choices=["demand", "eta", "stockout", "future_demand"],
         default=None,
-        help='Run specific phases (default: all). future_demand generates 180-day forward forecast.'
+        help="Run specific phases (default: all). future_demand generates 180-day forward forecast.",
     )
     args = parser.parse_args()
     run_writeback(phases=args.phase)

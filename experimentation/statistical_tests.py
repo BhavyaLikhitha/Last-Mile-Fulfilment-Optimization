@@ -12,7 +12,6 @@
 # from scipy import stats
 
 
-
 # ALPHA = 0.05   # significance threshold
 
 
@@ -161,10 +160,7 @@ from scipy import stats
 ALPHA = 0.05
 
 
-def welch_ttest_from_stats(
-    n_c: int, mean_c: float, var_c: float,
-    n_t: int, mean_t: float, var_t: float
-) -> dict:
+def welch_ttest_from_stats(n_c: int, mean_c: float, var_c: float, n_t: int, mean_t: float, var_t: float) -> dict:
     """
     Welch's t-test from summary statistics.
     Mathematically identical to scipy.stats.ttest_ind(equal_var=False).
@@ -205,25 +201,33 @@ def welch_ttest_from_stats(
     pct_change = (mean_diff / float(mean_c) * 100) if float(mean_c) != 0 else 0
 
     return {
-        't_stat'         : round(float(t_stat), 4),
-        'p_value'        : round(float(p_value), 6),
-        'ci_lower'       : ci_lower,
-        'ci_upper'       : ci_upper,
-        'is_significant' : bool(p_value < ALPHA),
-        'mean_control'   : round(float(mean_c), 4),
-        'mean_treatment' : round(float(mean_t), 4),
-        'n_control'      : int(n_c),
-        'n_treatment'    : int(n_t),
-        'mean_difference': round(mean_diff, 4),
-        'pct_change'     : round(pct_change, 2),
+        "t_stat": round(float(t_stat), 4),
+        "p_value": round(float(p_value), 6),
+        "ci_lower": ci_lower,
+        "ci_upper": ci_upper,
+        "is_significant": bool(p_value < ALPHA),
+        "mean_control": round(float(mean_c), 4),
+        "mean_treatment": round(float(mean_t), 4),
+        "n_control": int(n_c),
+        "n_treatment": int(n_t),
+        "mean_difference": round(mean_diff, 4),
+        "pct_change": round(pct_change, 2),
     }
 
 
 def _empty_result() -> dict:
     return {
-        't_stat': None, 'p_value': None, 'ci_lower': None, 'ci_upper': None,
-        'is_significant': None, 'mean_control': None, 'mean_treatment': None,
-        'n_control': 0, 'n_treatment': 0, 'mean_difference': None, 'pct_change': None
+        "t_stat": None,
+        "p_value": None,
+        "ci_lower": None,
+        "ci_upper": None,
+        "is_significant": None,
+        "mean_control": None,
+        "mean_treatment": None,
+        "n_control": 0,
+        "n_treatment": 0,
+        "mean_difference": None,
+        "pct_change": None,
     }
 
 
@@ -239,10 +243,10 @@ def run_all_tests(summary_stats: pd.DataFrame) -> pd.DataFrame:
     """
     results = []
 
-    for exp_id in summary_stats['experiment_id'].unique():
-        exp_df = summary_stats[summary_stats['experiment_id'] == exp_id]
-        control = exp_df[exp_df['group_name'] == 'Control']
-        treatment = exp_df[exp_df['group_name'] == 'Treatment']
+    for exp_id in summary_stats["experiment_id"].unique():
+        exp_df = summary_stats[summary_stats["experiment_id"] == exp_id]
+        control = exp_df[exp_df["group_name"] == "Control"]
+        treatment = exp_df[exp_df["group_name"] == "Treatment"]
 
         if len(control) == 0 or len(treatment) == 0:
             continue
@@ -252,16 +256,20 @@ def run_all_tests(summary_stats: pd.DataFrame) -> pd.DataFrame:
 
         print(f"  Testing {exp_id}...")
         test_result = welch_ttest_from_stats(
-            n_c=int(c['n']), mean_c=float(c['mean_value']), var_c=float(c['var_value']),
-            n_t=int(t['n']), mean_t=float(t['mean_value']), var_t=float(t['var_value'])
+            n_c=int(c["n"]),
+            mean_c=float(c["mean_value"]),
+            var_c=float(c["var_value"]),
+            n_t=int(t["n"]),
+            mean_t=float(t["mean_value"]),
+            var_t=float(t["var_value"]),
         )
-        test_result['experiment_id'] = exp_id
-        test_result['metric_name'] = c.get('metric_name', 'unknown')
-        test_result['experiment_type'] = c.get('experiment_type', 'unknown')
-        test_result['status'] = c.get('status', 'unknown')
+        test_result["experiment_id"] = exp_id
+        test_result["metric_name"] = c.get("metric_name", "unknown")
+        test_result["experiment_type"] = c.get("experiment_type", "unknown")
+        test_result["status"] = c.get("status", "unknown")
 
-        sig_label = "SIGNIFICANT" if test_result['is_significant'] else "not significant"
-        p_display = f"{test_result['p_value']:.4f}" if test_result['p_value'] is not None else "N/A"
+        sig_label = "SIGNIFICANT" if test_result["is_significant"] else "not significant"
+        p_display = f"{test_result['p_value']:.4f}" if test_result["p_value"] is not None else "N/A"
         print(f"    p={p_display} | {sig_label} | lift={test_result['pct_change']}%")
 
         results.append(test_result)
@@ -274,16 +282,16 @@ def print_summary(results_df: pd.DataFrame):
     print("  A/B TEST RESULTS SUMMARY")
     print("=" * 70)
     print(f"  {'ID':<10} {'Type':<25} {'p-value':<10} {'Lift %':<10} {'Significant'}")
-    print(f"  {'-'*10} {'-'*25} {'-'*10} {'-'*10} {'-'*11}")
+    print(f"  {'-' * 10} {'-' * 25} {'-' * 10} {'-' * 10} {'-' * 11}")
 
     for _, row in results_df.iterrows():
-        p_val = f"{row['p_value']:.4f}" if row['p_value'] is not None else "N/A"
-        lift = f"{row['pct_change']:.2f}%" if row['pct_change'] is not None else "N/A"
-        sig = "YES ***" if row['is_significant'] else "no"
+        p_val = f"{row['p_value']:.4f}" if row["p_value"] is not None else "N/A"
+        lift = f"{row['pct_change']:.2f}%" if row["pct_change"] is not None else "N/A"
+        sig = "YES ***" if row["is_significant"] else "no"
         print(f"  {row['experiment_id']:<10} {row['experiment_type']:<25} {p_val:<10} {lift:<10} {sig}")
 
-    if 'is_significant' in results_df.columns:
-        n_sig = results_df['is_significant'].sum()
+    if "is_significant" in results_df.columns:
+        n_sig = results_df["is_significant"].sum()
         n_total = len(results_df)
         print(f"\n  {n_sig}/{n_total} experiments significant at alpha=0.05")
     print("=" * 70)

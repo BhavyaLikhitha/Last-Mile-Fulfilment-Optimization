@@ -351,39 +351,38 @@ per-observation noise, which is statistically equivalent for large N
 (Central Limit Theorem) and uses zero memory.
 """
 
-import numpy as np
 import pandas as pd
 
 # ── Treatment Effect Configuration ───────────────────────────
 EXPERIMENT_EFFECTS = {
-    'EXP-001': 0.12,
-    'EXP-002': 0.09,
-    'EXP-003': 0.12,
-    'EXP-004': 0.11,
-    'EXP-005': 0.08,
-    'EXP-006': 0.07,
-    'EXP-007': 0.10,
-    'EXP-008': 0.13,
-    'EXP-009': 0.04,
-    'EXP-010': 0.05,
+    "EXP-001": 0.12,
+    "EXP-002": 0.09,
+    "EXP-003": 0.12,
+    "EXP-004": 0.11,
+    "EXP-005": 0.08,
+    "EXP-006": 0.07,
+    "EXP-007": 0.10,
+    "EXP-008": 0.13,
+    "EXP-009": 0.04,
+    "EXP-010": 0.05,
 }
 
 ACTIVE_SCALE = {
-    'inventory_policy': 0.50,
-    'routing_algorithm': 0.50,
-    'warehouse_allocation': 0.40,
+    "inventory_policy": 0.50,
+    "routing_algorithm": 0.50,
+    "warehouse_allocation": 0.40,
 }
 
 # Metric used per experiment type
 METRIC_MAP = {
-    'inventory_policy': 'total_fulfillment_cost',
-    'routing_algorithm': 'actual_delivery_minutes',
-    'warehouse_allocation': 'total_fulfillment_cost',
+    "inventory_policy": "total_fulfillment_cost",
+    "routing_algorithm": "actual_delivery_minutes",
+    "warehouse_allocation": "total_fulfillment_cost",
 }
 
 # Join table per experiment type
 JOIN_SQL = {
-    'inventory_policy': """
+    "inventory_policy": """
         SELECT a.experiment_id, a.group_name, o.total_fulfillment_cost AS metric_value,
                c.customer_segment, o.order_priority, o.assigned_warehouse_id AS warehouse_id
         FROM RAW.FACT_EXPERIMENT_ASSIGNMENTS a
@@ -392,7 +391,7 @@ JOIN_SQL = {
         WHERE o.order_status != 'Cancelled'
           AND a.experiment_id = '{exp_id}'
     """,
-    'warehouse_allocation': """
+    "warehouse_allocation": """
         SELECT a.experiment_id, a.group_name, o.total_fulfillment_cost AS metric_value,
                c.customer_segment, o.order_priority, o.assigned_warehouse_id AS warehouse_id
         FROM RAW.FACT_EXPERIMENT_ASSIGNMENTS a
@@ -401,7 +400,7 @@ JOIN_SQL = {
         WHERE o.order_status != 'Cancelled'
           AND a.experiment_id = '{exp_id}'
     """,
-    'routing_algorithm': """
+    "routing_algorithm": """
         SELECT a.experiment_id, a.group_name, d.actual_delivery_minutes AS metric_value,
                c.customer_segment, o.order_priority, d.warehouse_id
         FROM RAW.FACT_EXPERIMENT_ASSIGNMENTS a
@@ -419,7 +418,7 @@ JOIN_SQL = {
 def get_effect_multiplier(experiment_id: str, experiment_type: str, status: str) -> float:
     """Get the treatment effect multiplier for a given experiment."""
     base = EXPERIMENT_EFFECTS.get(experiment_id, 0.08)
-    if status == 'Active':
+    if status == "Active":
         base = base * ACTIVE_SCALE.get(experiment_type, 0.50)
     return 1.0 - base  # e.g. 0.88 means 12% reduction
 
@@ -440,9 +439,9 @@ def load_experiment_summary_stats(conn, fast_query_fn) -> tuple:
     all_stats = []
 
     for _, exp in experiments.iterrows():
-        exp_id = exp['experiment_id']
-        exp_type = exp['experiment_type']
-        status = exp['status']
+        exp_id = exp["experiment_id"]
+        exp_type = exp["experiment_type"]
+        status = exp["status"]
         metric = METRIC_MAP.get(exp_type)
 
         if exp_type not in JOIN_SQL:
@@ -470,15 +469,15 @@ def load_experiment_summary_stats(conn, fast_query_fn) -> tuple:
 
         # Apply treatment effect to Treatment group stats
         multiplier = get_effect_multiplier(exp_id, exp_type, status)
-        treat_mask = stats_df['group_name'] == 'Treatment'
-        stats_df.loc[treat_mask, 'mean_value'] = stats_df.loc[treat_mask, 'mean_value'] * multiplier
+        treat_mask = stats_df["group_name"] == "Treatment"
+        stats_df.loc[treat_mask, "mean_value"] = stats_df.loc[treat_mask, "mean_value"] * multiplier
         # Variance scales by multiplier^2
-        stats_df.loc[treat_mask, 'var_value'] = stats_df.loc[treat_mask, 'var_value'] * (multiplier ** 2)
-        stats_df.loc[treat_mask, 'std_value'] = stats_df.loc[treat_mask, 'std_value'] * abs(multiplier)
+        stats_df.loc[treat_mask, "var_value"] = stats_df.loc[treat_mask, "var_value"] * (multiplier**2)
+        stats_df.loc[treat_mask, "std_value"] = stats_df.loc[treat_mask, "std_value"] * abs(multiplier)
 
-        stats_df['experiment_type'] = exp_type
-        stats_df['status'] = status
-        stats_df['metric_name'] = metric
+        stats_df["experiment_type"] = exp_type
+        stats_df["status"] = status
+        stats_df["metric_name"] = metric
         all_stats.append(stats_df)
 
     if all_stats:
@@ -498,9 +497,9 @@ def load_segment_stats(conn, fast_query_fn, experiments: pd.DataFrame) -> pd.Dat
     all_segments = []
 
     for _, exp in experiments.iterrows():
-        exp_id = exp['experiment_id']
-        exp_type = exp['experiment_type']
-        status = exp['status']
+        exp_id = exp["experiment_id"]
+        exp_type = exp["experiment_type"]
+        status = exp["status"]
 
         if exp_type not in JOIN_SQL:
             continue
@@ -510,8 +509,8 @@ def load_segment_stats(conn, fast_query_fn, experiments: pd.DataFrame) -> pd.Dat
 
         # Customer segment breakdown
         for segment_col, segment_label in [
-            ('customer_segment', 'customer_segment'),
-            ('order_priority', 'order_priority'),
+            ("customer_segment", "customer_segment"),
+            ("order_priority", "order_priority"),
         ]:
             seg_sql = f"""
                 SELECT
@@ -529,12 +528,12 @@ def load_segment_stats(conn, fast_query_fn, experiments: pd.DataFrame) -> pd.Dat
             """
             seg_df = fast_query_fn(conn, seg_sql)
             if len(seg_df) > 0:
-                seg_df['experiment_type'] = exp_type
-                seg_df['status'] = status
+                seg_df["experiment_type"] = exp_type
+                seg_df["status"] = status
                 # Apply treatment effect
-                treat_mask = seg_df['group_name'] == 'Treatment'
-                seg_df.loc[treat_mask, 'mean_value'] = seg_df.loc[treat_mask, 'mean_value'] * multiplier
-                seg_df.loc[treat_mask, 'var_value'] = seg_df.loc[treat_mask, 'var_value'] * (multiplier ** 2)
+                treat_mask = seg_df["group_name"] == "Treatment"
+                seg_df.loc[treat_mask, "mean_value"] = seg_df.loc[treat_mask, "mean_value"] * multiplier
+                seg_df.loc[treat_mask, "var_value"] = seg_df.loc[treat_mask, "var_value"] * (multiplier**2)
                 all_segments.append(seg_df)
 
         # Warehouse region breakdown
@@ -555,11 +554,11 @@ def load_segment_stats(conn, fast_query_fn, experiments: pd.DataFrame) -> pd.Dat
         """
         reg_df = fast_query_fn(conn, region_sql)
         if len(reg_df) > 0:
-            reg_df['experiment_type'] = exp_type
-            reg_df['status'] = status
-            treat_mask = reg_df['group_name'] == 'Treatment'
-            reg_df.loc[treat_mask, 'mean_value'] = reg_df.loc[treat_mask, 'mean_value'] * multiplier
-            reg_df.loc[treat_mask, 'var_value'] = reg_df.loc[treat_mask, 'var_value'] * (multiplier ** 2)
+            reg_df["experiment_type"] = exp_type
+            reg_df["status"] = status
+            treat_mask = reg_df["group_name"] == "Treatment"
+            reg_df.loc[treat_mask, "mean_value"] = reg_df.loc[treat_mask, "mean_value"] * multiplier
+            reg_df.loc[treat_mask, "var_value"] = reg_df.loc[treat_mask, "var_value"] * (multiplier**2)
             all_segments.append(reg_df)
 
     if all_segments:

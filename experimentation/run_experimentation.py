@@ -296,33 +296,36 @@ Usage:
     python -m experimentation.run_experimentation --mode full
 """
 
+import argparse
 import os
 import sys
 import time
-import argparse
-import pandas as pd
 import warnings
-warnings.filterwarnings('ignore')
+
+import pandas as pd
+
+warnings.filterwarnings("ignore")
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from experimentation.assignment_engine import load_experiment_summary_stats, load_segment_stats
-from experimentation.statistical_tests import run_all_tests, print_summary
-from experimentation.uplift_analysis import run_uplift_analysis, print_uplift_highlights
-
+from experimentation.statistical_tests import print_summary, run_all_tests
+from experimentation.uplift_analysis import print_uplift_highlights, run_uplift_analysis
 
 # ── Connection ────────────────────────────────────────────────
 
+
 def get_snowflake_connection():
-    from dotenv import load_dotenv
     import snowflake.connector
+    from dotenv import load_dotenv
+
     load_dotenv()
     return snowflake.connector.connect(
-        account  =os.getenv('SNOWFLAKE_ACCOUNT'),
-        user     =os.getenv('SNOWFLAKE_USER'),
-        password =os.getenv('SNOWFLAKE_PASSWORD'),
-        database =os.getenv('SNOWFLAKE_DATABASE', 'FULFILLMENT_DB'),
-        warehouse=os.getenv('SNOWFLAKE_WAREHOUSE', 'FULFILLMENT_WH'),
+        account=os.getenv("SNOWFLAKE_ACCOUNT"),
+        user=os.getenv("SNOWFLAKE_USER"),
+        password=os.getenv("SNOWFLAKE_PASSWORD"),
+        database=os.getenv("SNOWFLAKE_DATABASE", "FULFILLMENT_DB"),
+        warehouse=os.getenv("SNOWFLAKE_WAREHOUSE", "FULFILLMENT_WH"),
         network_timeout=120,
         login_timeout=60,
     )
@@ -334,6 +337,7 @@ def fast_query(conn, sql: str) -> pd.DataFrame:
         cur.execute(sql)
         try:
             import pyarrow as pa
+
             batches = cur.fetch_arrow_batches()
             table = pa.concat_tables(list(batches))
             df = table.to_pandas()
@@ -345,15 +349,14 @@ def fast_query(conn, sql: str) -> pd.DataFrame:
     # Convert Snowflake Decimal types to native Python numeric types
     for col in df.columns:
         if df[col].dtype == object:
-            df[col] = pd.to_numeric(df[col], errors='ignore')
+            df[col] = pd.to_numeric(df[col], errors="ignore")
     return df
 
 
-def bulk_merge(cur, df: pd.DataFrame, temp_table: str, temp_ddl: str,
-               merge_sql: str, temp_path: str) -> int:
+def bulk_merge(cur, df: pd.DataFrame, temp_table: str, temp_ddl: str, merge_sql: str, temp_path: str) -> int:
     os.makedirs(os.path.dirname(temp_path), exist_ok=True)
     df.to_csv(temp_path, index=False)
-    abs_path = os.path.abspath(temp_path).replace('\\', '/')
+    abs_path = os.path.abspath(temp_path).replace("\\", "/")
     cur.execute(f"CREATE OR REPLACE TEMPORARY TABLE {temp_table} ({temp_ddl})")
     cur.execute(f"PUT file://{abs_path} @%{temp_table} AUTO_COMPRESS=TRUE OVERWRITE=TRUE")
     cur.execute(f"""
@@ -373,6 +376,7 @@ def bulk_merge(cur, df: pd.DataFrame, temp_table: str, temp_ddl: str,
 
 # ── Statistical Tests ─────────────────────────────────────────
 
+
 def run_statistical_tests(conn, cur, summary_stats: pd.DataFrame) -> pd.DataFrame:
     print("\n" + "=" * 60)
     print("  STATISTICAL TESTS — WELCH T-TEST")
@@ -386,21 +390,23 @@ def run_statistical_tests(conn, cur, summary_stats: pd.DataFrame) -> pd.DataFram
     # Build writeback
     writeback_rows = []
     for _, row in results_df.iterrows():
-        for group in ['Control', 'Treatment']:
-            writeback_rows.append({
-                'experiment_id'            : row['experiment_id'],
-                'group_name'               : group,
-                'p_value'                  : row['p_value'],
-                'confidence_interval_lower': row['ci_lower'],
-                'confidence_interval_upper': row['ci_upper'],
-                'is_significant'           : row['is_significant'],
-            })
+        for group in ["Control", "Treatment"]:
+            writeback_rows.append(
+                {
+                    "experiment_id": row["experiment_id"],
+                    "group_name": group,
+                    "p_value": row["p_value"],
+                    "confidence_interval_lower": row["ci_lower"],
+                    "confidence_interval_upper": row["ci_upper"],
+                    "is_significant": row["is_significant"],
+                }
+            )
 
     writeback = pd.DataFrame(writeback_rows)
-    writeback['p_value']                   = writeback['p_value'].astype(float)
-    writeback['confidence_interval_lower'] = writeback['confidence_interval_lower'].astype(float)
-    writeback['confidence_interval_upper'] = writeback['confidence_interval_upper'].astype(float)
-    writeback['is_significant']            = writeback['is_significant'].astype(bool)
+    writeback["p_value"] = writeback["p_value"].astype(float)
+    writeback["confidence_interval_lower"] = writeback["confidence_interval_lower"].astype(float)
+    writeback["confidence_interval_upper"] = writeback["confidence_interval_upper"].astype(float)
+    writeback["is_significant"] = writeback["is_significant"].astype(bool)
 
     cur.execute("USE SCHEMA MARTS")
     rows_merged = bulk_merge(
@@ -426,7 +432,7 @@ def run_statistical_tests(conn, cur, summary_stats: pd.DataFrame) -> pd.DataFram
                 t.CONFIDENCE_INTERVAL_UPPER = s.CONFIDENCE_INTERVAL_UPPER,
                 t.IS_SIGNIFICANT            = s.IS_SIGNIFICANT
         """,
-        temp_path='experimentation/results/_temp_experiment_stats.csv'
+        temp_path="experimentation/results/_temp_experiment_stats.csv",
     )
     conn.commit()
 
@@ -436,6 +442,7 @@ def run_statistical_tests(conn, cur, summary_stats: pd.DataFrame) -> pd.DataFram
 
 
 # ── Uplift ────────────────────────────────────────────────────
+
 
 def run_uplift(segment_stats: pd.DataFrame):
     print("\n" + "=" * 60)
@@ -447,13 +454,14 @@ def run_uplift(segment_stats: pd.DataFrame):
     all_uplift = run_uplift_analysis(segment_stats)
     print_uplift_highlights(all_uplift)
 
-    print(f"\n  ✓ Uplift CSVs saved to experimentation/results/")
+    print("\n  ✓ Uplift CSVs saved to experimentation/results/")
     print(f"  ✓ Completed in {time.time() - start:.0f}s")
 
 
 # ── Entry Point ───────────────────────────────────────────────
 
-def run_experimentation(mode: str = 'full'):
+
+def run_experimentation(mode: str = "full"):
     print("=" * 60)
     print("  FULFILLMENT PLATFORM — EXPERIMENTATION ENGINE")
     print(f"  Mode: {mode}")
@@ -461,17 +469,17 @@ def run_experimentation(mode: str = 'full'):
 
     total_start = time.time()
     conn = get_snowflake_connection()
-    cur  = conn.cursor()
+    cur = conn.cursor()
 
     try:
         # Load summary stats from Snowflake (~20 rows)
         experiments, summary_stats = load_experiment_summary_stats(conn, fast_query)
         print(f"  Loaded {len(summary_stats)} summary stat rows")
 
-        if mode in ('full', 'stats'):
+        if mode in ("full", "stats"):
             run_statistical_tests(conn, cur, summary_stats)
 
-        if mode in ('full', 'uplift'):
+        if mode in ("full", "uplift"):
             # Load segment stats (~100-200 rows)
             print("\n  Loading segment-level stats from Snowflake...")
             segment_stats = load_segment_stats(conn, fast_query, experiments)
@@ -488,12 +496,12 @@ def run_experimentation(mode: str = 'full'):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Experimentation Engine')
+    parser = argparse.ArgumentParser(description="Experimentation Engine")
     parser.add_argument(
-        '--mode',
-        choices=['full', 'stats', 'uplift'],
-        default='full',
-        help='full=all, stats=t-tests+writeback only, uplift=segment analysis only (default: full)'
+        "--mode",
+        choices=["full", "stats", "uplift"],
+        default="full",
+        help="full=all, stats=t-tests+writeback only, uplift=segment analysis only (default: full)",
     )
     args = parser.parse_args()
     run_experimentation(mode=args.mode)

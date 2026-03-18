@@ -5,11 +5,11 @@ Holding cost, delivery cost, shipment cost, fulfillment cost.
 """
 
 from config.constants import (
-    HOLDING_COST_RATE,
-    DELIVERY_COST_PER_KM,
     DELIVERY_BASE_COST,
-    SHIPMENT_COST_PER_UNIT,
+    DELIVERY_COST_PER_KM,
+    HOLDING_COST_RATE,
     SHIPMENT_BASE_COST,
+    SHIPMENT_COST_PER_UNIT,
 )
 
 

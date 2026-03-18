@@ -11,12 +11,12 @@ v2: Added warehouse-specific utilization floors via WAREHOUSE_UTILIZATION_TARGET
     realistic even on low-volume days.
 """
 
-import numpy as np
-import pandas as pd
 from datetime import date, datetime
 
+import numpy as np
+import pandas as pd
+
 from config.constants import BATCH_ID_PREFIX, WAREHOUSE_UTILIZATION_TARGETS
-from config.warehouse_config import WAREHOUSE_IDS
 
 
 def generate_daily_driver_activity(
@@ -38,7 +38,7 @@ def generate_daily_driver_activity(
     Returns: driver_activity_df
     """
     batch_id = f"{BATCH_ID_PREFIX}_{current_date.strftime('%Y%m%d')}"
-    now      = datetime.combine(current_date, datetime.min.time())
+    now = datetime.combine(current_date, datetime.min.time())
 
     # Only active drivers work
     active_drivers = drivers_df[drivers_df["availability_status"] == "Active"]
@@ -48,38 +48,42 @@ def generate_daily_driver_activity(
     if len(deliveries_df) > 0:
         completed = deliveries_df[deliveries_df["delivery_status"].isin(["Delivered", "Failed"])]
         if len(completed) > 0:
-            stats = completed.groupby("driver_id").agg(
-                deliveries_completed=("delivery_id", "count"),
-                total_distance_km=("distance_km", "sum"),
-            ).to_dict("index")
+            stats = (
+                completed.groupby("driver_id")
+                .agg(
+                    deliveries_completed=("delivery_id", "count"),
+                    total_distance_km=("distance_km", "sum"),
+                )
+                .to_dict("index")
+            )
             driver_delivery_stats = stats
 
     rows = []
 
     for _, driver in active_drivers.iterrows():
         driver_id = driver["driver_id"]
-        wh_id     = driver["warehouse_id"]
+        wh_id = driver["warehouse_id"]
 
         stats = driver_delivery_stats.get(driver_id, None)
 
         if stats:
             deliveries_completed = stats["deliveries_completed"]
-            total_distance       = round(stats["total_distance_km"], 2)
+            total_distance = round(stats["total_distance_km"], 2)
         else:
             deliveries_completed = 0
-            total_distance       = 0.0
+            total_distance = 0.0
 
         # Calculate time spent from deliveries
         avg_speed = driver["avg_speed_kmh"]
         if avg_speed > 0 and total_distance > 0:
-            driving_hours      = total_distance / avg_speed
-            handling_hours     = deliveries_completed * 0.25  # ~15 min per delivery
+            driving_hours = total_distance / avg_speed
+            handling_hours = deliveries_completed * 0.25  # ~15 min per delivery
             total_active_hours = round(min(driving_hours + handling_hours, 10.0), 2)
         else:
             total_active_hours = round(rng.uniform(0.5, 2.0), 2)
 
         shift_hours = 8.0
-        idle_hours  = round(max(0, shift_hours - total_active_hours), 2)
+        idle_hours = round(max(0, shift_hours - total_active_hours), 2)
 
         # Delivery-derived utilization
         delivery_utilization = (total_active_hours / shift_hours) * 100
@@ -101,20 +105,22 @@ def generate_daily_driver_activity(
 
         # Recalculate active hours from final utilization for consistency
         total_active_hours = round((utilization_pct / 100) * shift_hours, 2)
-        idle_hours         = round(max(0, shift_hours - total_active_hours), 2)
+        idle_hours = round(max(0, shift_hours - total_active_hours), 2)
 
-        rows.append({
-            "driver_id":            driver_id,
-            "activity_date":        current_date,
-            "warehouse_id":         wh_id,
-            "deliveries_completed": deliveries_completed,
-            "total_distance_km":    total_distance,
-            "total_active_hours":   total_active_hours,
-            "idle_hours":           idle_hours,
-            "utilization_pct":      utilization_pct,
-            "created_at":           now,
-            "updated_at":           now,
-            "batch_id":             batch_id,
-        })
+        rows.append(
+            {
+                "driver_id": driver_id,
+                "activity_date": current_date,
+                "warehouse_id": wh_id,
+                "deliveries_completed": deliveries_completed,
+                "total_distance_km": total_distance,
+                "total_active_hours": total_active_hours,
+                "idle_hours": idle_hours,
+                "utilization_pct": utilization_pct,
+                "created_at": now,
+                "updated_at": now,
+                "batch_id": batch_id,
+            }
+        )
 
     return pd.DataFrame(rows)

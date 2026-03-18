@@ -55,18 +55,18 @@
 #     """
 #     Calculate the total demand multiplier for a given date and optional category.
 #     Combines monthly, day-of-week, holiday, and category-specific seasonality.
-    
+
 #     Returns a float multiplier (1.0 = normal demand).
 #     """
 #     month = current_date.month
 #     dow = current_date.isoweekday()  # 1=Monday, 7=Sunday
-    
+
 #     # Base monthly seasonality
 #     multiplier = MONTHLY_SEASONALITY.get(month, 1.0)
-    
+
 #     # Day-of-week effect
 #     multiplier *= DAY_OF_WEEK_MULTIPLIERS.get(dow, 1.0)
-    
+
 #     # Holiday effect
 #     is_holiday = (month, current_date.day) in {
 #         (1, 1), (7, 4), (12, 25), (11, 24), (11, 25),
@@ -74,12 +74,12 @@
 #     }
 #     if is_holiday:
 #         multiplier *= HOLIDAY_MULTIPLIER
-    
+
 #     # Category-specific seasonal boost
 #     if category and category in CATEGORY_SEASONAL_BOOSTS:
 #         category_boost = CATEGORY_SEASONAL_BOOSTS[category].get(month, 1.0)
 #         multiplier *= category_boost
-    
+
 #     return multiplier
 
 
@@ -89,11 +89,11 @@
 #     Applies seasonality + random noise.
 #     """
 #     multiplier = get_demand_multiplier(current_date)
-    
+
 #     # Add random noise (±10%)
 #     noise = rng.normal(1.0, 0.10)
 #     noise = max(0.8, min(1.2, noise))  # Clamp
-    
+
 #     count = int(base_count * multiplier * noise)
 #     return max(1, count)
 
@@ -106,7 +106,7 @@
 #     multiplier = get_demand_multiplier(current_date, category)
 #     noise = rng.normal(1.0, 0.15)
 #     noise = max(0.5, min(1.5, noise))
-    
+
 #     demand = int(base_demand * multiplier * noise)
 #     return max(0, demand)
 
@@ -117,64 +117,67 @@ Controls how demand varies by month, day-of-week, holidays, and category.
 v2: Added larger noise bands, year-over-year drift, and shock event application.
 """
 
-import numpy as np
 from datetime import date
+
+import numpy as np
+
 from config.constants import (
-    ANNUAL_GROWTH_RATE, BASE_YEAR,
-    SHOCK_EVENT_PROBABILITY, SHOCK_EVENTS,
+    BASE_YEAR,
+    SHOCK_EVENT_PROBABILITY,
+    SHOCK_EVENTS,
     get_year_growth_multiplier,
 )
 
 # ── Monthly Seasonality ──
 MONTHLY_SEASONALITY = {
-    1:  0.80,   # January  — post-holiday dip
-    2:  0.82,   # February
-    3:  0.90,   # March    — spring pickup
-    4:  0.95,   # April
-    5:  1.00,   # May
-    6:  1.05,   # June     — summer
-    7:  1.02,   # July
-    8:  0.98,   # August   — back to school
-    9:  1.00,   # September
-    10: 1.10,   # October  — pre-holiday
-    11: 1.30,   # November — Black Friday
-    12: 1.40,   # December — holiday peak
+    1: 0.80,  # January  — post-holiday dip
+    2: 0.82,  # February
+    3: 0.90,  # March    — spring pickup
+    4: 0.95,  # April
+    5: 1.00,  # May
+    6: 1.05,  # June     — summer
+    7: 1.02,  # July
+    8: 0.98,  # August   — back to school
+    9: 1.00,  # September
+    10: 1.10,  # October  — pre-holiday
+    11: 1.30,  # November — Black Friday
+    12: 1.40,  # December — holiday peak
 }
 
 # ── Day-of-Week Multipliers ──
 DAY_OF_WEEK_MULTIPLIERS = {
-    1: 1.10,   # Monday
-    2: 1.05,   # Tuesday
-    3: 1.00,   # Wednesday
-    4: 1.00,   # Thursday
-    5: 1.15,   # Friday  — highest
-    6: 0.85,   # Saturday
-    7: 0.75,   # Sunday  — lowest
+    1: 1.10,  # Monday
+    2: 1.05,  # Tuesday
+    3: 1.00,  # Wednesday
+    4: 1.00,  # Thursday
+    5: 1.15,  # Friday  — highest
+    6: 0.85,  # Saturday
+    7: 0.75,  # Sunday  — lowest
 }
 
 # ── Category-Specific Seasonal Boosts ──
 CATEGORY_SEASONAL_BOOSTS = {
-    "Electronics":   {10: 1.3, 11: 1.6, 12: 1.8},   # Strong Q4 spike
-    "Toys":          {10: 1.4, 11: 1.7, 12: 2.0},   # Biggest holiday boost
-    "Apparel":       {3: 1.3, 4: 1.2, 9: 1.3},       # Spring + back-to-school
-    "Grocery":       {11: 1.2, 12: 1.1},              # Mild holiday bump
-    "Home & Garden": {4: 1.4, 5: 1.5, 6: 1.3},       # Spring/summer
-    "Health":        {1: 1.4, 2: 1.2},               # New year resolutions
-    "Sports":        {5: 1.3, 6: 1.4, 7: 1.3},       # Summer
-    "Beauty":        {2: 1.3, 11: 1.2, 12: 1.3},     # Valentine's + holidays
+    "Electronics": {10: 1.3, 11: 1.6, 12: 1.8},  # Strong Q4 spike
+    "Toys": {10: 1.4, 11: 1.7, 12: 2.0},  # Biggest holiday boost
+    "Apparel": {3: 1.3, 4: 1.2, 9: 1.3},  # Spring + back-to-school
+    "Grocery": {11: 1.2, 12: 1.1},  # Mild holiday bump
+    "Home & Garden": {4: 1.4, 5: 1.5, 6: 1.3},  # Spring/summer
+    "Health": {1: 1.4, 2: 1.2},  # New year resolutions
+    "Sports": {5: 1.3, 6: 1.4, 7: 1.3},  # Summer
+    "Beauty": {2: 1.3, 11: 1.2, 12: 1.3},  # Valentine's + holidays
 }
 
 # ── Year-over-Year Demand Drift ──
 # Categories that are growing faster than average
 CATEGORY_GROWTH_MODIFIERS = {
-    "Electronics":   1.04,   # +4% extra growth per year (tech adoption)
-    "Health":        1.03,   # +3% extra (health consciousness trend)
-    "Beauty":        1.02,   # +2% extra (e-commerce beauty growth)
-    "Grocery":       0.98,   # -2% (grocery e-commerce growing slower)
-    "Apparel":       1.00,   # baseline
+    "Electronics": 1.04,  # +4% extra growth per year (tech adoption)
+    "Health": 1.03,  # +3% extra (health consciousness trend)
+    "Beauty": 1.02,  # +2% extra (e-commerce beauty growth)
+    "Grocery": 0.98,  # -2% (grocery e-commerce growing slower)
+    "Apparel": 1.00,  # baseline
     "Home & Garden": 1.01,
-    "Toys":          1.00,
-    "Sports":        1.01,
+    "Toys": 1.00,
+    "Sports": 1.01,
 }
 
 HOLIDAY_MULTIPLIER = 1.25
@@ -182,24 +185,20 @@ HOLIDAY_MULTIPLIER = 1.25
 # ── Noise Configuration ──
 # Larger noise creates more realistic day-to-day fluctuation
 # Instead of smooth flat lines, charts show realistic jaggedness
-DAILY_NOISE_MEAN   = 1.0
-DAILY_NOISE_STD    = 0.18    # ±18% daily noise (was ±10% — much more visible variation)
-DAILY_NOISE_MIN    = 0.65    # Can drop to 65% on slow days
-DAILY_NOISE_MAX    = 1.45    # Can spike to 145% on busy days
+DAILY_NOISE_MEAN = 1.0
+DAILY_NOISE_STD = 0.18  # ±18% daily noise (was ±10% — much more visible variation)
+DAILY_NOISE_MIN = 0.65  # Can drop to 65% on slow days
+DAILY_NOISE_MAX = 1.45  # Can spike to 145% on busy days
 
 
-def get_demand_multiplier(
-    current_date: date,
-    category: str = None,
-    rng: np.random.Generator = None
-) -> float:
+def get_demand_multiplier(current_date: date, category: str = None, rng: np.random.Generator = None) -> float:
     """
     Calculate total demand multiplier for a given date and category.
     Includes: monthly + day-of-week + holiday + category seasonal + YoY growth + noise.
     """
-    month  = current_date.month
-    dow    = current_date.isoweekday()
-    year   = current_date.year
+    month = current_date.month
+    dow = current_date.isoweekday()
+    year = current_date.year
 
     # Base monthly seasonality
     multiplier = MONTHLY_SEASONALITY.get(month, 1.0)
@@ -209,8 +208,13 @@ def get_demand_multiplier(
 
     # Holiday effect
     is_holiday = (month, current_date.day) in {
-        (1, 1), (7, 4), (12, 25), (11, 24),
-        (11, 25), (11, 26), (11, 27),
+        (1, 1),
+        (7, 4),
+        (12, 25),
+        (11, 24),
+        (11, 25),
+        (11, 26),
+        (11, 27),
     }
     if is_holiday:
         multiplier *= HOLIDAY_MULTIPLIER
@@ -239,11 +243,7 @@ def get_demand_multiplier(
     return multiplier
 
 
-def get_daily_order_count(
-    base_count: int,
-    current_date: date,
-    rng: np.random.Generator
-) -> int:
+def get_daily_order_count(base_count: int, current_date: date, rng: np.random.Generator) -> int:
     """
     Calculate number of orders for a given day.
     Applies seasonality + YoY growth + larger noise + occasional shock events.
@@ -258,12 +258,7 @@ def get_daily_order_count(
     return max(1, count)
 
 
-def get_product_demand(
-    base_demand: float,
-    current_date: date,
-    category: str,
-    rng: np.random.Generator
-) -> int:
+def get_product_demand(base_demand: float, current_date: date, category: str, rng: np.random.Generator) -> int:
     """
     Calculate demand for a specific product on a given day.
     Applies category weights + seasonal boosts + YoY growth + noise.
@@ -304,6 +299,7 @@ def get_warehouse_order_share(warehouse_id: str, rng: np.random.Generator) -> fl
     LA-West and NYC-East dominate; DEN-Mountain and SEA-NW are smaller.
     """
     from config.constants import WAREHOUSE_DEMAND_WEIGHTS
+
     base_weight = WAREHOUSE_DEMAND_WEIGHTS.get(warehouse_id, 1.0)
     # Small per-day variation so warehouse shares aren't exactly the same every day
     noise = rng.normal(1.0, 0.05)

@@ -4,17 +4,19 @@ Trains: Linear Regression, Random Forest, XGBoost, LightGBM
 Compares on: MAPE, RMSE, R²
 """
 
+import warnings
+from typing import Dict, Tuple
+
 import numpy as np
 import pandas as pd
-from typing import Dict, Tuple
-import warnings
-warnings.filterwarnings('ignore')
 
-from sklearn.linear_model import LinearRegression
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-import xgboost as xgb
+warnings.filterwarnings("ignore")
+
 import lightgbm as lgb
+import xgboost as xgb
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 
 def mean_absolute_percentage_error(y_true, y_pred):
@@ -28,17 +30,17 @@ def train_linear_regression(X_train, y_train, X_val, y_val) -> Tuple[object, Dic
     """Train Linear Regression baseline."""
     model = LinearRegression()
     model.fit(X_train, y_train)
-    
+
     y_pred = model.predict(X_val)
     y_pred = np.maximum(y_pred, 1)  # ETA must be positive
-    
+
     metrics = {
-        'MAPE': round(mean_absolute_percentage_error(y_val, y_pred), 2),
-        'RMSE': round(np.sqrt(mean_squared_error(y_val, y_pred)), 2),
-        'MAE': round(mean_absolute_error(y_val, y_pred), 2),
-        'R2': round(r2_score(y_val, y_pred), 4),
+        "MAPE": round(mean_absolute_percentage_error(y_val, y_pred), 2),
+        "RMSE": round(np.sqrt(mean_squared_error(y_val, y_pred)), 2),
+        "MAE": round(mean_absolute_error(y_val, y_pred), 2),
+        "R2": round(r2_score(y_val, y_pred), 4),
     }
-    
+
     return model, metrics
 
 
@@ -53,17 +55,17 @@ def train_random_forest(X_train, y_train, X_val, y_val) -> Tuple[object, Dict]:
         n_jobs=-1,
     )
     model.fit(X_train, y_train)
-    
+
     y_pred = model.predict(X_val)
     y_pred = np.maximum(y_pred, 1)
-    
+
     metrics = {
-        'MAPE': round(mean_absolute_percentage_error(y_val, y_pred), 2),
-        'RMSE': round(np.sqrt(mean_squared_error(y_val, y_pred)), 2),
-        'MAE': round(mean_absolute_error(y_val, y_pred), 2),
-        'R2': round(r2_score(y_val, y_pred), 4),
+        "MAPE": round(mean_absolute_percentage_error(y_val, y_pred), 2),
+        "RMSE": round(np.sqrt(mean_squared_error(y_val, y_pred)), 2),
+        "MAE": round(mean_absolute_error(y_val, y_pred), 2),
+        "R2": round(r2_score(y_val, y_pred), 4),
     }
-    
+
     return model, metrics
 
 
@@ -81,23 +83,24 @@ def train_xgboost(X_train, y_train, X_val, y_val) -> Tuple[object, Dict]:
         random_state=42,
         n_jobs=-1,
     )
-    
+
     model.fit(
-        X_train, y_train,
+        X_train,
+        y_train,
         eval_set=[(X_val, y_val)],
         verbose=False,
     )
-    
+
     y_pred = model.predict(X_val)
     y_pred = np.maximum(y_pred, 1)
-    
+
     metrics = {
-        'MAPE': round(mean_absolute_percentage_error(y_val, y_pred), 2),
-        'RMSE': round(np.sqrt(mean_squared_error(y_val, y_pred)), 2),
-        'MAE': round(mean_absolute_error(y_val, y_pred), 2),
-        'R2': round(r2_score(y_val, y_pred), 4),
+        "MAPE": round(mean_absolute_percentage_error(y_val, y_pred), 2),
+        "RMSE": round(np.sqrt(mean_squared_error(y_val, y_pred)), 2),
+        "MAE": round(mean_absolute_error(y_val, y_pred), 2),
+        "R2": round(r2_score(y_val, y_pred), 4),
     }
-    
+
     return model, metrics
 
 
@@ -116,50 +119,53 @@ def train_lightgbm(X_train, y_train, X_val, y_val) -> Tuple[object, Dict]:
         n_jobs=-1,
         verbose=-1,
     )
-    
+
     model.fit(
-        X_train, y_train,
+        X_train,
+        y_train,
         eval_set=[(X_val, y_val)],
     )
-    
+
     y_pred = model.predict(X_val)
     y_pred = np.maximum(y_pred, 1)
-    
+
     metrics = {
-        'MAPE': round(mean_absolute_percentage_error(y_val, y_pred), 2),
-        'RMSE': round(np.sqrt(mean_squared_error(y_val, y_pred)), 2),
-        'MAE': round(mean_absolute_error(y_val, y_pred), 2),
-        'R2': round(r2_score(y_val, y_pred), 4),
+        "MAPE": round(mean_absolute_percentage_error(y_val, y_pred), 2),
+        "RMSE": round(np.sqrt(mean_squared_error(y_val, y_pred)), 2),
+        "MAE": round(mean_absolute_error(y_val, y_pred), 2),
+        "R2": round(r2_score(y_val, y_pred), 4),
     }
-    
+
     return model, metrics
 
 
 def compare_models(results: Dict[str, Dict]) -> pd.DataFrame:
     """Create a comparison DataFrame from model results."""
     comparison = pd.DataFrame(results).T
-    comparison.index.name = 'Model'
-    comparison = comparison.sort_values('MAPE')
-    
+    comparison.index.name = "Model"
+    comparison = comparison.sort_values("MAPE")
+
     print("\n" + "=" * 50)
     print("ETA PREDICTION — MODEL COMPARISON")
     print("=" * 50)
     print(comparison.to_string())
     print(f"\nBest Model: {comparison.index[0]} (MAPE: {comparison.iloc[0]['MAPE']}%)")
-    
+
     return comparison
 
 
-def get_feature_importance(model, feature_names: list, model_name: str = 'XGBoost') -> pd.DataFrame:
+def get_feature_importance(model, feature_names: list, model_name: str = "XGBoost") -> pd.DataFrame:
     """Extract feature importance from tree-based models."""
-    if hasattr(model, 'feature_importances_'):
-        importance = pd.DataFrame({
-            'feature': feature_names,
-            'importance': model.feature_importances_,
-        }).sort_values('importance', ascending=False)
-        
+    if hasattr(model, "feature_importances_"):
+        importance = pd.DataFrame(
+            {
+                "feature": feature_names,
+                "importance": model.feature_importances_,
+            }
+        ).sort_values("importance", ascending=False)
+
         print(f"\nTop 10 Features ({model_name}):")
         print(importance.head(10).to_string(index=False))
-        
+
         return importance
     return pd.DataFrame()

@@ -30,34 +30,35 @@ Key design decisions:
   automatically gets the same treatment as historical data.
 """
 
-from datetime import datetime, timedelta
 import os
 import sys
+from datetime import datetime, timedelta
 
-from airflow import DAG
-from airflow.providers.standard.operators.bash import BashOperator
 from airflow.providers.amazon.aws.sensors.s3 import S3KeySensor
 from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
+from airflow.providers.standard.operators.bash import BashOperator
 from airflow.providers.standard.operators.python import PythonOperator
 from airflow.task.trigger_rule import TriggerRule
 
-# ── Constants ─────────────────────────────────────────────────
-PROJECT_DIR = '/opt/airflow/project'
-DBT_DIR     = f'{PROJECT_DIR}/dbt'
-DBT_BIN     = '/home/airflow/.local/bin/dbt'   # full path avoids PATH issues
-PYTHON_BIN  = '/usr/local/bin/python'           # system python in container
+from airflow import DAG
 
-S3_BUCKET   = os.getenv('S3_BUCKET_NAME', 'last-mile-fulfillment-platform')
+# ── Constants ─────────────────────────────────────────────────
+PROJECT_DIR = "/opt/airflow/project"
+DBT_DIR = f"{PROJECT_DIR}/dbt"
+DBT_BIN = "/home/airflow/.local/bin/dbt"  # full path avoids PATH issues
+PYTHON_BIN = "/usr/local/bin/python"  # system python in container
+
+S3_BUCKET = os.getenv("S3_BUCKET_NAME", "last-mile-fulfillment-platform")
 
 # ── Default arguments ─────────────────────────────────────────
 default_args = {
-    'owner'            : 'fulfillment-platform',
-    'depends_on_past'  : False,
-    'email_on_failure' : False,
-    'email_on_retry'   : False,
-    'retries'          : 1,
-    'retry_delay'      : timedelta(minutes=5),
-    'execution_timeout': timedelta(hours=2),
+    "owner": "fulfillment-platform",
+    "depends_on_past": False,
+    "email_on_failure": False,
+    "email_on_retry": False,
+    "retries": 1,
+    "retry_delay": timedelta(minutes=5),
+    "execution_timeout": timedelta(hours=2),
 }
 
 # ── Snowflake SQL ─────────────────────────────────────────────
@@ -488,124 +489,133 @@ END
 WHERE group_name = 'Treatment';
 """
 
+
 # ── Python callables for ML/Optimization/Experimentation ──────
 def run_ml_demand_stockout():
     sys.path.insert(0, PROJECT_DIR)
     os.chdir(PROJECT_DIR)
     from ml.training.predict_and_writeback import predict_demand, predict_stockout
+
     predict_demand()
     predict_stockout()
+
 
 def run_ml_eta():
     sys.path.insert(0, PROJECT_DIR)
     os.chdir(PROJECT_DIR)
     from ml.training.predict_and_writeback import predict_eta
+
     predict_eta()
+
 
 def run_ml_future_demand():
     sys.path.insert(0, PROJECT_DIR)
     os.chdir(PROJECT_DIR)
     from ml.training.predict_and_writeback import predict_future_demand
+
     predict_future_demand()
+
 
 def run_optimization():
     sys.path.insert(0, PROJECT_DIR)
     os.chdir(PROJECT_DIR)
     from optimization.run_optimization import run_optimization as _run
-    _run(mode='full')
+
+    _run(mode="full")
+
 
 def run_experimentation():
     sys.path.insert(0, PROJECT_DIR)
     os.chdir(PROJECT_DIR)
     from experimentation.run_experimentation import run_experimentation as _run
-    _run(mode='full')
+
+    _run(mode="full")
 
 
 # ── DAG ───────────────────────────────────────────────────────
 with DAG(
-    dag_id='fulfillment_pipeline',
+    dag_id="fulfillment_pipeline",
     default_args=default_args,
-    description='Daily fulfillment platform pipeline',
-    schedule='35 16 * * *',
+    description="Daily fulfillment platform pipeline",
+    schedule="35 16 * * *",
     start_date=datetime(2026, 3, 4),
     catchup=False,
     max_active_runs=1,
-    tags=['fulfillment', 'daily', 'production'],
+    tags=["fulfillment", "daily", "production"],
 ) as dag:
-
     # Task 1: Wait for today's Lambda orders file in S3
     # Uses {{ ds }} so it only waits for today's partition, not any date
     wait_for_s3_files = S3KeySensor(
-        task_id='wait_for_s3_files',
+        task_id="wait_for_s3_files",
         bucket_name=S3_BUCKET,
-        bucket_key='raw/fact_orders/date={{ ds }}/data.csv',
-        aws_conn_id='aws_default',
+        bucket_key="raw/fact_orders/date={{ ds }}/data.csv",
+        aws_conn_id="aws_default",
         timeout=60 * 60 * 6,
         poke_interval=60 * 5,
-        mode='poke',
+        mode="poke",
     )
 
     # Task 2: COPY INTO Snowflake — today's partition only, FORCE=TRUE
     copy_into_snowflake = SQLExecuteQueryOperator(
-        task_id='copy_into_snowflake',
+        task_id="copy_into_snowflake",
         sql=COPY_INTO_SQL,
-        conn_id='snowflake_default',
+        conn_id="snowflake_default",
     )
 
     # Task 3: Deduplicate after COPY INTO
     # Handles any duplicate rows introduced by FORCE=TRUE re-loads
     dedup_snowflake = SQLExecuteQueryOperator(
-        task_id='dedup_snowflake',
+        task_id="dedup_snowflake",
         sql=DEDUP_SQL,
-        conn_id='snowflake_default',
+        conn_id="snowflake_default",
     )
 
     # Task 4: Verify row counts
     verify_row_counts = SQLExecuteQueryOperator(
-        task_id='verify_row_counts',
+        task_id="verify_row_counts",
         sql=VERIFY_SQL,
-        conn_id='snowflake_default',
+        conn_id="snowflake_default",
     )
 
     # Task 5: dbt snapshot
     dbt_snapshot = BashOperator(
-        task_id='dbt_snapshot',
-        bash_command=f'cd {DBT_DIR} && {DBT_BIN} snapshot --profiles-dir {DBT_DIR}',
+        task_id="dbt_snapshot",
+        bash_command=f"cd {DBT_DIR} && {DBT_BIN} snapshot --profiles-dir {DBT_DIR}",
         env={
-            'PATH'               : f'/home/airflow/.local/bin:/usr/local/bin:/usr/bin:/bin',
-            'SNOWFLAKE_ACCOUNT'  : os.getenv('SNOWFLAKE_ACCOUNT', ''),
-            'SNOWFLAKE_USER'     : os.getenv('SNOWFLAKE_USER', ''),
-            'SNOWFLAKE_PASSWORD' : os.getenv('SNOWFLAKE_PASSWORD', ''),
-            'SNOWFLAKE_DATABASE' : os.getenv('SNOWFLAKE_DATABASE', 'FULFILLMENT_DB'),
-            'SNOWFLAKE_WAREHOUSE': os.getenv('SNOWFLAKE_WAREHOUSE', 'FULFILLMENT_WH'),
+            "PATH": "/home/airflow/.local/bin:/usr/local/bin:/usr/bin:/bin",
+            "SNOWFLAKE_ACCOUNT": os.getenv("SNOWFLAKE_ACCOUNT", ""),
+            "SNOWFLAKE_USER": os.getenv("SNOWFLAKE_USER", ""),
+            "SNOWFLAKE_PASSWORD": os.getenv("SNOWFLAKE_PASSWORD", ""),
+            "SNOWFLAKE_DATABASE": os.getenv("SNOWFLAKE_DATABASE", "FULFILLMENT_DB"),
+            "SNOWFLAKE_WAREHOUSE": os.getenv("SNOWFLAKE_WAREHOUSE", "FULFILLMENT_WH"),
         },
     )
 
     # Task 6: dbt run
     dbt_run = BashOperator(
-        task_id='dbt_run',
-        bash_command=f'cd {DBT_DIR} && {DBT_BIN} run --profiles-dir {DBT_DIR}',
+        task_id="dbt_run",
+        bash_command=f"cd {DBT_DIR} && {DBT_BIN} run --profiles-dir {DBT_DIR}",
         env={
-            'PATH'               : f'/home/airflow/.local/bin:/usr/local/bin:/usr/bin:/bin',
-            'SNOWFLAKE_ACCOUNT'  : os.getenv('SNOWFLAKE_ACCOUNT', ''),
-            'SNOWFLAKE_USER'     : os.getenv('SNOWFLAKE_USER', ''),
-            'SNOWFLAKE_PASSWORD' : os.getenv('SNOWFLAKE_PASSWORD', ''),
-            'SNOWFLAKE_DATABASE' : os.getenv('SNOWFLAKE_DATABASE', 'FULFILLMENT_DB'),
-            'SNOWFLAKE_WAREHOUSE': os.getenv('SNOWFLAKE_WAREHOUSE', 'FULFILLMENT_WH'),
+            "PATH": "/home/airflow/.local/bin:/usr/local/bin:/usr/bin:/bin",
+            "SNOWFLAKE_ACCOUNT": os.getenv("SNOWFLAKE_ACCOUNT", ""),
+            "SNOWFLAKE_USER": os.getenv("SNOWFLAKE_USER", ""),
+            "SNOWFLAKE_PASSWORD": os.getenv("SNOWFLAKE_PASSWORD", ""),
+            "SNOWFLAKE_DATABASE": os.getenv("SNOWFLAKE_DATABASE", "FULFILLMENT_DB"),
+            "SNOWFLAKE_WAREHOUSE": os.getenv("SNOWFLAKE_WAREHOUSE", "FULFILLMENT_WH"),
         },
     )
 
     # Task 7: dbt test
     dbt_test = BashOperator(
-        task_id='dbt_test',
-        bash_command=f'cd {DBT_DIR} && {DBT_BIN} test --profiles-dir {DBT_DIR}',
+        task_id="dbt_test",
+        bash_command=f"cd {DBT_DIR} && {DBT_BIN} test --profiles-dir {DBT_DIR}",
         env={
-            'PATH'               : f'/home/airflow/.local/bin:/usr/local/bin:/usr/bin:/bin',
-            'SNOWFLAKE_ACCOUNT'  : os.getenv('SNOWFLAKE_ACCOUNT', ''),
-            'SNOWFLAKE_USER'     : os.getenv('SNOWFLAKE_USER', ''),
-            'SNOWFLAKE_PASSWORD' : os.getenv('SNOWFLAKE_PASSWORD', ''),
-            'SNOWFLAKE_DATABASE' : os.getenv('SNOWFLAKE_DATABASE', 'FULFILLMENT_DB'),
-            'SNOWFLAKE_WAREHOUSE': os.getenv('SNOWFLAKE_WAREHOUSE', 'FULFILLMENT_WH'),
+            "PATH": "/home/airflow/.local/bin:/usr/local/bin:/usr/bin:/bin",
+            "SNOWFLAKE_ACCOUNT": os.getenv("SNOWFLAKE_ACCOUNT", ""),
+            "SNOWFLAKE_USER": os.getenv("SNOWFLAKE_USER", ""),
+            "SNOWFLAKE_PASSWORD": os.getenv("SNOWFLAKE_PASSWORD", ""),
+            "SNOWFLAKE_DATABASE": os.getenv("SNOWFLAKE_DATABASE", "FULFILLMENT_DB"),
+            "SNOWFLAKE_WAREHOUSE": os.getenv("SNOWFLAKE_WAREHOUSE", "FULFILLMENT_WH"),
         },
     )
 
@@ -615,43 +625,43 @@ with DAG(
     # layer, not the simulation layer, because they reflect business context
     # (urban vs suburban warehouses, seasonal patterns) not raw data generation.
     post_processing = SQLExecuteQueryOperator(
-        task_id='post_processing',
+        task_id="post_processing",
         sql=POST_PROCESSING_SQL,
-        conn_id='snowflake_default',
+        conn_id="snowflake_default",
     )
 
     # Tasks 9-11: ML
     ml_demand_stockout = PythonOperator(
-        task_id='ml_demand_stockout',
+        task_id="ml_demand_stockout",
         python_callable=run_ml_demand_stockout,
     )
 
     ml_eta = PythonOperator(
-        task_id='ml_eta',
+        task_id="ml_eta",
         python_callable=run_ml_eta,
     )
 
     ml_future_demand = PythonOperator(
-        task_id='ml_future_demand',
+        task_id="ml_future_demand",
         python_callable=run_ml_future_demand,
     )
 
     # Task 12: Optimization
     run_optimization_task = PythonOperator(
-        task_id='run_optimization',
+        task_id="run_optimization",
         python_callable=run_optimization,
     )
 
     # Task 13: Experimentation
     run_experimentation_task = PythonOperator(
-        task_id='run_experimentation',
+        task_id="run_experimentation",
         python_callable=run_experimentation,
     )
 
     # Task: Done
     pipeline_complete = BashOperator(
-        task_id='pipeline_complete',
-        bash_command=f'echo "FULFILLMENT PIPELINE COMPLETE — $(date)"',
+        task_id="pipeline_complete",
+        bash_command='echo "FULFILLMENT PIPELINE COMPLETE — $(date)"',
         trigger_rule=TriggerRule.ALL_SUCCESS,
     )
 

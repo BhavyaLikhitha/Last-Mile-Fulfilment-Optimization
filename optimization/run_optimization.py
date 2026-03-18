@@ -17,38 +17,35 @@ Usage:
     python -m optimization.run_optimization --mode full        # both (default)
 """
 
+import argparse
 import os
 import sys
 import time
-import argparse
-import numpy as np
-import pandas as pd
 import warnings
-warnings.filterwarnings('ignore')
+
+import pandas as pd
+
+warnings.filterwarnings("ignore")
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from optimization.cost_model import (
-    compute_baseline_costs,
-    compute_optimized_costs,
-    compute_allocation_efficiency
-)
+from optimization.cost_model import compute_baseline_costs, compute_optimized_costs
 from optimization.inventory_optimization import compute_inventory_optimization_summary
-from optimization.warehouse_allocation import optimize_warehouse_allocation_greedy
-
 
 # ── Connection ────────────────────────────────────────────────
 
+
 def get_snowflake_connection():
-    from dotenv import load_dotenv
     import snowflake.connector
+    from dotenv import load_dotenv
+
     load_dotenv()
     return snowflake.connector.connect(
-        account  =os.getenv('SNOWFLAKE_ACCOUNT'),
-        user     =os.getenv('SNOWFLAKE_USER'),
-        password =os.getenv('SNOWFLAKE_PASSWORD'),
-        database =os.getenv('SNOWFLAKE_DATABASE', 'FULFILLMENT_DB'),
-        warehouse=os.getenv('SNOWFLAKE_WAREHOUSE', 'FULFILLMENT_WH'),
+        account=os.getenv("SNOWFLAKE_ACCOUNT"),
+        user=os.getenv("SNOWFLAKE_USER"),
+        password=os.getenv("SNOWFLAKE_PASSWORD"),
+        database=os.getenv("SNOWFLAKE_DATABASE", "FULFILLMENT_DB"),
+        warehouse=os.getenv("SNOWFLAKE_WAREHOUSE", "FULFILLMENT_WH"),
     )
 
 
@@ -59,6 +56,7 @@ def fast_query(conn, sql: str) -> pd.DataFrame:
         cur.execute(sql)
         try:
             import pyarrow as pa
+
             batches = cur.fetch_arrow_batches()
             table = pa.concat_tables(list(batches))
             df = table.to_pandas()
@@ -72,16 +70,15 @@ def fast_query(conn, sql: str) -> pd.DataFrame:
     # Convert Snowflake Decimal types to native Python numeric types
     for col in df.columns:
         if df[col].dtype == object:
-            df[col] = pd.to_numeric(df[col], errors='ignore')
+            df[col] = pd.to_numeric(df[col], errors="ignore")
     return df
 
 
-def bulk_merge(cur, df: pd.DataFrame, temp_table: str, temp_ddl: str,
-               merge_sql: str, temp_path: str) -> int:
+def bulk_merge(cur, df: pd.DataFrame, temp_table: str, temp_ddl: str, merge_sql: str, temp_path: str) -> int:
     """Generic bulk MERGE pattern via PUT → COPY INTO → MERGE."""
     os.makedirs(os.path.dirname(temp_path), exist_ok=True)
     df.to_csv(temp_path, index=False)
-    abs_path = os.path.abspath(temp_path).replace('\\', '/')
+    abs_path = os.path.abspath(temp_path).replace("\\", "/")
 
     cur.execute(f"CREATE OR REPLACE TEMPORARY TABLE {temp_table} ({temp_ddl})")
     cur.execute(f"PUT file://{abs_path} @%{temp_table} AUTO_COMPRESS=TRUE OVERWRITE=TRUE")
@@ -102,6 +99,7 @@ def bulk_merge(cur, df: pd.DataFrame, temp_table: str, temp_ddl: str,
 
 # ── Cost Optimization ─────────────────────────────────────────
 
+
 def run_cost_optimization(conn, cur):
     """
     Pull warehouse KPIs, compute baseline vs optimized costs,
@@ -115,7 +113,7 @@ def run_cost_optimization(conn, cur):
     print("\n  Loading mart_daily_warehouse_kpis...")
     warehouse_kpis = fast_query(conn, "SELECT * FROM MARTS.MART_DAILY_WAREHOUSE_KPIS")
     print(f"  Loaded {len(warehouse_kpis):,} rows")
-    warehouse_kpis = warehouse_kpis.apply(pd.to_numeric, errors='ignore')
+    warehouse_kpis = warehouse_kpis.apply(pd.to_numeric, errors="ignore")
 
     # Compute baseline costs from mart data
     print("  Computing baseline costs...")
@@ -137,7 +135,9 @@ def run_cost_optimization(conn, cur):
     # Compute allocation efficiency in Snowflake (avoids pulling 7M+ rows into Python)
     print("  Computing allocation efficiency...")
     # print("  Computing allocation efficiency...")
-    alloc_eff = fast_query(conn, """
+    alloc_eff = fast_query(
+        conn,
+        """
         SELECT
             order_date AS date,
             assigned_warehouse_id AS warehouse_id,
@@ -146,25 +146,33 @@ def run_cost_optimization(conn, cur):
         FROM RAW.FACT_ORDERS
         WHERE order_status != 'Cancelled'
         GROUP BY order_date, assigned_warehouse_id
-    """)
+    """,
+    )
 
     # Merge allocation efficiency into cost df
-    df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
-    alloc_eff['date'] = pd.to_datetime(alloc_eff['date']).dt.strftime('%Y-%m-%d')
-    df = df.merge(alloc_eff, on=['date', 'warehouse_id'], how='left')
-    df['allocation_efficiency_pct'] = df['allocation_efficiency_pct'].fillna(0).round(2)
+    df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
+    alloc_eff["date"] = pd.to_datetime(alloc_eff["date"]).dt.strftime("%Y-%m-%d")
+    df = df.merge(alloc_eff, on=["date", "warehouse_id"], how="left")
+    df["allocation_efficiency_pct"] = df["allocation_efficiency_pct"].fillna(0).round(2)
 
     # Build writeback dataframe
-    writeback = df[[
-        'date', 'warehouse_id',
-        'baseline_total_cost', 'optimized_total_cost',
-        'savings_amount', 'savings_pct',
-        'holding_cost_baseline', 'holding_cost_optimized',
-        'transport_cost_baseline', 'transport_cost_optimized',
-        'allocation_efficiency_pct'
-    ]].copy()
+    writeback = df[
+        [
+            "date",
+            "warehouse_id",
+            "baseline_total_cost",
+            "optimized_total_cost",
+            "savings_amount",
+            "savings_pct",
+            "holding_cost_baseline",
+            "holding_cost_optimized",
+            "transport_cost_baseline",
+            "transport_cost_optimized",
+            "allocation_efficiency_pct",
+        ]
+    ].copy()
 
-    print(f"\n  Cost optimization summary:")
+    print("\n  Cost optimization summary:")
     print(f"    Total baseline cost : ${writeback['baseline_total_cost'].sum():>15,.2f}")
     print(f"    Total optimized cost: ${writeback['optimized_total_cost'].sum():>15,.2f}")
     print(f"    Total savings       : ${writeback['savings_amount'].sum():>15,.2f}")
@@ -219,7 +227,7 @@ def run_cost_optimization(conn, cur):
                 s.ALLOCATION_EFFICIENCY_PCT
             )
         """,
-        temp_path='optimization/results/_temp_cost_optimization.csv'
+        temp_path="optimization/results/_temp_cost_optimization.csv",
     )
     conn.commit()
 
@@ -228,6 +236,7 @@ def run_cost_optimization(conn, cur):
 
 
 # ── Inventory Optimization Summary ───────────────────────────
+
 
 def run_inventory_optimization(conn):
     """
@@ -241,16 +250,22 @@ def run_inventory_optimization(conn):
     start = time.time()
 
     print("\n  Loading data...")
-    product_kpis = fast_query(conn, """
+    product_kpis = fast_query(
+        conn,
+        """
         SELECT product_id, total_units_sold, avg_closing_stock,
                total_holding_cost, is_forecast
         FROM MARTS.MART_DAILY_PRODUCT_KPIS
         WHERE is_forecast = FALSE
-    """)
-    products = fast_query(conn, """
+    """,
+    )
+    products = fast_query(
+        conn,
+        """
         SELECT product_id, cost_price, lead_time_days, safety_stock, reorder_point
         FROM STAGING.STG_PRODUCTS WHERE IS_CURRENT = TRUE
-    """)
+    """,
+    )
     suppliers = fast_query(conn, "SELECT lead_time_std_dev FROM STAGING.STG_SUPPLIERS")
 
     print(f"  Loaded {len(product_kpis):,} product KPI rows, {len(products):,} products")
@@ -258,11 +273,11 @@ def run_inventory_optimization(conn):
     print("  Running EOQ optimization...")
     results = compute_inventory_optimization_summary(product_kpis, products, suppliers)
 
-    os.makedirs('optimization/results', exist_ok=True)
-    output_path = 'optimization/results/inventory_optimization_results.csv'
+    os.makedirs("optimization/results", exist_ok=True)
+    output_path = "optimization/results/inventory_optimization_results.csv"
     results.to_csv(output_path, index=False)
 
-    print(f"\n  EOQ Optimization Summary:")
+    print("\n  EOQ Optimization Summary:")
     print(f"    Products optimized: {len(results):,}")
     print(f"    Avg EOQ           : {results['eoq'].mean():.1f} units")
     print(f"    Avg optimal SS    : {results['optimal_safety_stock'].mean():.1f} units")
@@ -275,7 +290,8 @@ def run_inventory_optimization(conn):
 
 # ── Main Entry Point ──────────────────────────────────────────
 
-def run_optimization(mode: str = 'full'):
+
+def run_optimization(mode: str = "full"):
     print("=" * 60)
     print("  FULFILLMENT PLATFORM — OPTIMIZATION ENGINE")
     print(f"  Mode: {mode}")
@@ -283,13 +299,13 @@ def run_optimization(mode: str = 'full'):
 
     total_start = time.time()
     conn = get_snowflake_connection()
-    cur  = conn.cursor()
+    cur = conn.cursor()
 
     try:
-        if mode in ('full', 'cost'):
+        if mode in ("full", "cost"):
             run_cost_optimization(conn, cur)
 
-        if mode in ('full', 'inventory'):
+        if mode in ("full", "inventory"):
             run_inventory_optimization(conn)
 
     finally:
@@ -302,12 +318,12 @@ def run_optimization(mode: str = 'full'):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Fulfillment Optimization Engine')
+    parser = argparse.ArgumentParser(description="Fulfillment Optimization Engine")
     parser.add_argument(
-        '--mode',
-        choices=['full', 'cost', 'inventory', 'allocation'],
-        default='full',
-        help='full=all, cost=cost model only, inventory=EOQ only (default: full)'
+        "--mode",
+        choices=["full", "cost", "inventory", "allocation"],
+        default="full",
+        help="full=all, cost=cost model only, inventory=EOQ only (default: full)",
     )
     args = parser.parse_args()
     run_optimization(mode=args.mode)
