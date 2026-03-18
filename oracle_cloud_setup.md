@@ -1,4 +1,4 @@
-# Deploying to Oracle Cloud — Step by Step
+# Deploying to Oracle Cloud — Step by Step (for future reference)
 
 Move the entire Docker setup (14 services: Airflow + Kafka + Spark) from your laptop to Oracle Cloud's **Always Free** VM. After this, your laptop does nothing — everything runs on the cloud 24/7 for free.
 
