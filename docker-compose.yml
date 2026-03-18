@@ -46,6 +46,8 @@ x-airflow-common: &airflow-common
     AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
     AWS_REGION: ${AWS_REGION}
     S3_BUCKET_NAME: ${S3_BUCKET_NAME}
+    # v2: Uncomment for Kafka version
+    # KAFKA_BOOTSTRAP_SERVERS: kafka:29092
     # Airflow connections via environment variables
     AIRFLOW_CONN_SNOWFLAKE_DEFAULT: "snowflake://${SNOWFLAKE_USER}:${SNOWFLAKE_PASSWORD}@/${SNOWFLAKE_DATABASE}?account=${SNOWFLAKE_ACCOUNT}&warehouse=${SNOWFLAKE_WAREHOUSE}&role=ACCOUNTADMIN"
     AIRFLOW_CONN_AWS_DEFAULT: "aws://${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}@?region_name=${AWS_REGION}"
@@ -63,6 +65,84 @@ x-airflow-common: &airflow-common
 
 services:
 
+  # ── v2: Kafka services (uncomment for Kafka + Spark version) ──
+  # zookeeper:
+  #   image: confluentinc/cp-zookeeper:7.6.0
+  #   environment:
+  #     ZOOKEEPER_CLIENT_PORT: 2181
+  #     ZOOKEEPER_TICK_TIME: 2000
+  #     KAFKA_OPTS: "-Dzookeeper.4lw.commands.whitelist=ruok,srvr"
+  #   ports:
+  #     - "2181:2181"
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "echo srvr | nc localhost 2181 | grep Mode"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 10
+  #   restart: always
+  #
+  # kafka:
+  #   image: confluentinc/cp-kafka:7.6.0
+  #   depends_on:
+  #     zookeeper:
+  #       condition: service_healthy
+  #   ports:
+  #     - "9092:9092"
+  #   environment:
+  #     KAFKA_BROKER_ID: 1
+  #     KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+  #     KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+  #     KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+  #     KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+  #     KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+  #     KAFKA_HEAP_OPTS: "-Xmx512m -Xms256m"
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server kafka:29092"]
+  #     interval: 15s
+  #     timeout: 10s
+  #     retries: 5
+  #     start_period: 30s
+  #   restart: always
+  #
+  # kafka-ui:
+  #   image: provectuslabs/kafka-ui:latest
+  #   depends_on:
+  #     kafka:
+  #       condition: service_healthy
+  #   ports:
+  #     - "8082:8080"
+  #   environment:
+  #     KAFKA_CLUSTERS_0_NAME: fulfillment-local
+  #     KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+  #   restart: always
+  #
+  # ── v2: Spark services (uncomment for Kafka + Spark version) ──
+  # spark-master:
+  #   image: apache/spark:3.5.1-python3
+  #   command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
+  #   ports:
+  #     - "7077:7077"
+  #     - "8083:8080"
+  #   environment:
+  #     SPARK_NO_DAEMONIZE: "true"
+  #   volumes:
+  #     - .:/opt/spark/project
+  #   restart: always
+  #
+  # spark-worker:
+  #   image: apache/spark:3.5.1-python3
+  #   command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077"]
+  #   depends_on:
+  #     - spark-master
+  #   environment:
+  #     SPARK_NO_DAEMONIZE: "true"
+  #     SPARK_WORKER_CORES: "2"
+  #     SPARK_WORKER_MEMORY: "1g"
+  #   volumes:
+  #     - .:/opt/spark/project
+  #   restart: always
+
+  # ── Data Infrastructure ────────────────────────────────────────
   postgres:
     image: postgres:16
     environment:
