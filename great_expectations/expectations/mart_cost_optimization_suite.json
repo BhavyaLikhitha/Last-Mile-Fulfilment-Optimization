@@ -1,0 +1,27 @@
+{
+  "expectation_suite_name": "mart_cost_optimization_suite",
+  "expectations": [
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {"column": "SAVINGS_AMOUNT", "min_value": 0, "strictly": true},
+      "meta": {"notes": "Optimization should always produce positive savings"}
+    },
+    {
+      "expectation_type": "expect_column_pair_values_A_to_be_greater_than_B",
+      "kwargs": {
+        "column_A": "BASELINE_TOTAL_COST",
+        "column_B": "OPTIMIZED_TOTAL_COST",
+        "or_equal": false,
+        "mostly": 0.99
+      },
+      "meta": {"notes": "Optimized cost should always be less than baseline"}
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {"column": "SAVINGS_PCT", "min_value": 0, "max_value": 50}
+    }
+  ],
+  "meta": {
+    "great_expectations_version": "1.3.0"
+  }
+}

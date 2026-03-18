@@ -1,0 +1,76 @@
+config_version: 3.0
+
+fluent_datasources:
+  s3_pandas:
+    type: pandas
+    assets:
+      fact_orders_csv:
+        type: csv
+        filepath_or_buffer: /opt/airflow/project/output/fact_orders.csv
+      fact_deliveries_csv:
+        type: csv
+        filepath_or_buffer: /opt/airflow/project/output/fact_deliveries.csv
+      fact_inventory_snapshot_csv:
+        type: csv
+        filepath_or_buffer: /opt/airflow/project/output/fact_inventory_snapshot.csv
+
+  snowflake_raw:
+    type: sql
+    connection_string: "snowflake://${SNOWFLAKE_USER}:${SNOWFLAKE_PASSWORD}@${SNOWFLAKE_ACCOUNT}/${SNOWFLAKE_DATABASE}/RAW?warehouse=${SNOWFLAKE_WAREHOUSE}"
+    assets:
+      fact_orders:
+        type: table
+        table_name: FACT_ORDERS
+      fact_deliveries:
+        type: table
+        table_name: FACT_DELIVERIES
+      fact_inventory_snapshot:
+        type: table
+        table_name: FACT_INVENTORY_SNAPSHOT
+
+  snowflake_marts:
+    type: sql
+    connection_string: "snowflake://${SNOWFLAKE_USER}:${SNOWFLAKE_PASSWORD}@${SNOWFLAKE_ACCOUNT}/${SNOWFLAKE_DATABASE}/MARTS?warehouse=${SNOWFLAKE_WAREHOUSE}"
+    assets:
+      mart_delivery_performance:
+        type: table
+        table_name: MART_DELIVERY_PERFORMANCE
+      mart_cost_optimization:
+        type: table
+        table_name: MART_COST_OPTIMIZATION
+      mart_daily_warehouse_kpis:
+        type: table
+        table_name: MART_DAILY_WAREHOUSE_KPIS
+
+stores:
+  expectations_store:
+    class_name: ExpectationsStore
+    store_backend:
+      class_name: TupleFilesystemStoreBackend
+      base_directory: expectations/
+
+  validation_results_store:
+    class_name: ValidationResultsStore
+    store_backend:
+      class_name: TupleFilesystemStoreBackend
+      base_directory: uncommitted/validations/
+
+  checkpoint_store:
+    class_name: CheckpointStore
+    store_backend:
+      class_name: TupleFilesystemStoreBackend
+      base_directory: checkpoints/
+
+expectations_store_name: expectations_store
+checkpoint_store_name: checkpoint_store
+
+plugins_directory: plugins/
+
+data_docs_sites:
+  local_site:
+    class_name: SiteBuilder
+    store_backend:
+      class_name: TupleFilesystemStoreBackend
+      base_directory: uncommitted/data_docs/local_site/
+    site_index_builder:
+      class_name: DefaultSiteIndexBuilder

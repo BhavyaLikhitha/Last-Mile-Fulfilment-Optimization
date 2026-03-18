@@ -1,0 +1,23 @@
+{
+  "expectation_suite_name": "raw_inventory_suite",
+  "expectations": [
+    {
+      "expectation_type": "expect_compound_columns_to_be_unique",
+      "kwargs": {
+        "column_list": ["SNAPSHOT_DATE", "WAREHOUSE_ID", "PRODUCT_ID"]
+      },
+      "meta": {"notes": "One row per (date, warehouse, product) after dedup"}
+    },
+    {
+      "expectation_type": "expect_column_distinct_values_to_equal_set",
+      "kwargs": {
+        "column": "WAREHOUSE_ID",
+        "value_set": ["WH-001", "WH-002", "WH-003", "WH-004", "WH-005", "WH-006", "WH-007", "WH-008"]
+      },
+      "meta": {"notes": "All 8 warehouses must have data each day"}
+    }
+  ],
+  "meta": {
+    "great_expectations_version": "1.3.0"
+  }
+}

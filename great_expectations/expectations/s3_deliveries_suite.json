@@ -1,0 +1,44 @@
+{
+  "expectation_suite_name": "s3_deliveries_suite",
+  "expectations": [
+    {
+      "expectation_type": "expect_table_columns_to_match_ordered_list",
+      "kwargs": {
+        "column_list": [
+          "delivery_id", "order_id", "driver_id", "warehouse_id",
+          "assigned_time", "pickup_time", "delivered_time",
+          "estimated_eta_minutes", "actual_delivery_minutes", "distance_km",
+          "delivery_cost", "delivery_status", "on_time_flag",
+          "sla_minutes", "created_at", "updated_at", "batch_id"
+        ]
+      }
+    },
+    {
+      "expectation_type": "expect_table_row_count_to_be_between",
+      "kwargs": {"min_value": 2000, "max_value": 10000}
+    },
+    {
+      "expectation_type": "expect_column_values_to_match_regex",
+      "kwargs": {"column": "delivery_id", "regex": "^DEL-\\d+$"}
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_in_set",
+      "kwargs": {
+        "column": "delivery_status",
+        "value_set": ["Delivered", "In Transit", "Assigned", "Failed"]
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {"column": "distance_km", "min_value": 0.1, "max_value": 100.0, "mostly": 0.95},
+      "meta": {"notes": "Last-mile distances should be under 100km"}
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {"column": "estimated_eta_minutes", "min_value": 5, "max_value": 5000}
+    }
+  ],
+  "meta": {
+    "great_expectations_version": "1.3.0"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "expectation_suite_name": "raw_orders_suite",
+  "expectations": [
+    {
+      "expectation_type": "expect_column_values_to_be_unique",
+      "kwargs": {"column": "ORDER_ID"},
+      "meta": {"notes": "Post-dedup verification — no duplicates should remain"}
+    },
+    {
+      "expectation_type": "expect_table_row_count_to_be_between",
+      "kwargs": {"min_value": 3000, "max_value": 12000}
+    },
+    {
+      "expectation_type": "expect_column_distinct_values_to_be_in_set",
+      "kwargs": {
+        "column": "ALLOCATION_STRATEGY",
+        "value_set": ["nearest", "cost_optimal", "load_balanced"]
+      }
+    }
+  ],
+  "meta": {
+    "great_expectations_version": "1.3.0"
+  }
+}
