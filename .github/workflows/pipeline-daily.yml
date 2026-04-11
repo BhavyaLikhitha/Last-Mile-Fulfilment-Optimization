@@ -1,0 +1,120 @@
+# Daily Fulfillment Pipeline — replaces Airflow DAG
+# Lambda fires at 2:00 AM UTC via EventBridge → generates data → uploads to S3
+# This pipeline runs at 4:00 AM UTC (2 hours later) to process that data
+# 4:00 AM UTC = 12:00 AM ET / 11:00 PM CT
+
+name: Daily Pipeline
+
+on:
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+    inputs:
+      date:
+        description: 'Date to process (YYYY-MM-DD). Leave empty for today.'
+        required: false
+        type: string
+
+env:
+  SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+  SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+  SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+  SNOWFLAKE_DATABASE: FULFILLMENT_DB
+  SNOWFLAKE_WAREHOUSE: FULFILLMENT_WH
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  AWS_REGION: us-east-2
+  S3_BUCKET_NAME: last-mile-fulfillment-platform
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Cache Poetry virtualenv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: pipeline-${{ runner.os }}-${{ hashFiles('poetry.lock') }}
+
+      - name: Install dependencies
+        run: |
+          poetry install --no-interaction
+          pip install dbt-snowflake
+
+      - name: Determine pipeline date
+        id: date
+        run: |
+          if [ -n "${{ inputs.date }}" ]; then
+            echo "ds=${{ inputs.date }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ds=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── Task 1: Check S3 for today's Lambda data ──────────────
+      - name: Check S3 for data
+        run: poetry run python .github/scripts/run_pipeline.py check-s3 --date ${{ steps.date.outputs.ds }}
+
+      # ── Task 2: COPY INTO Snowflake ────────────────────────────
+      - name: COPY INTO Snowflake
+        run: poetry run python .github/scripts/run_pipeline.py copy-into --date ${{ steps.date.outputs.ds }}
+
+      # ── Task 3: Dedup RAW tables ───────────────────────────────
+      - name: Dedup
+        run: poetry run python .github/scripts/run_pipeline.py dedup
+
+      # ── Task 4: Verify row counts ─────────────────────────────
+      - name: Verify row counts
+        run: poetry run python .github/scripts/run_pipeline.py verify
+
+      # ── Task 5: dbt snapshot ───────────────────────────────────
+      - name: dbt snapshot
+        working-directory: dbt
+        run: |
+          dbt deps --profiles-dir .
+          dbt snapshot --profiles-dir .
+
+      # ── Task 6: dbt run ────────────────────────────────────────
+      - name: dbt run
+        working-directory: dbt
+        run: dbt run --profiles-dir .
+
+      # ── Task 7: dbt test ───────────────────────────────────────
+      - name: dbt test
+        working-directory: dbt
+        run: dbt test --profiles-dir .
+
+      # ── Task 8: Post-processing (mart adjustments) ─────────────
+      - name: Post-processing
+        run: poetry run python .github/scripts/run_pipeline.py post-processing
+
+      # ── Tasks 9-11: ML scoring ─────────────────────────────────
+      - name: ML - Demand + Stockout
+        run: poetry run python -m ml.training.predict_and_writeback --phase demand stockout
+
+      - name: ML - ETA
+        run: poetry run python -m ml.training.predict_and_writeback --phase eta
+
+      - name: ML - Future Demand Forecast
+        run: poetry run python -m ml.training.predict_and_writeback --phase future_demand
+
+      # ── Task 12: Optimization ──────────────────────────────────
+      - name: Optimization
+        run: poetry run python -m optimization.run_optimization
+
+      # ── Task 13: Experimentation ───────────────────────────────
+      - name: Experimentation
+        run: poetry run python -m experimentation.run_experimentation
+
+      - name: Pipeline complete
+        run: echo "FULFILLMENT PIPELINE COMPLETE — $(date -u) — date=${{ steps.date.outputs.ds }}"
