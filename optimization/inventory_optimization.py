@@ -151,7 +151,7 @@ def compute_inventory_optimization_summary(
     """
     # Aggregate to product level — avg daily demand and volatility
     product_agg = (
-        product_kpis[not product_kpis["is_forecast"]]
+        product_kpis[~product_kpis["is_forecast"]]
         .groupby("product_id")
         .agg(
             avg_daily_demand=("total_units_sold", "mean"),
