@@ -12,7 +12,6 @@
 
 ---
 ## 🔍 Project Overview
-
 This platform is a **full end-to-end data engineering and analytics solution** built to simulate and optimize a distributed last-mile fulfillment network across 8 US warehouses and 500 products. It spans every layer of the modern data stack like synthetic data generation, cloud ingestion, warehouse transformation, machine learning, cost optimization, A/B experimentation, and business intelligence, all orchestrated through a production-grade Airflow pipeline.
 
 The platform generates **40M+ rows of realistic operational data** covering orders, inventory snapshots, deliveries, driver activity, supplier shipments, and A/B experiment assignments across a 4-year timeline (Feb 2022 → Sep 2026). Every component mirrors how real fulfillment companies like Amazon, Walmart, Chewy, and DoorDash operate their data platforms.
@@ -33,7 +32,6 @@ The platform generates **40M+ rows of realistic operational data** covering orde
 ---
 
 ## 🏢 Business Context
-
 This platform mirrors the operational intelligence stack used across **e-commerce, retail, logistics, grocery, quick-commerce and last-mile delivery**:
 
 - **Amazon / Walmart / Target** — multi-warehouse inventory allocation, nearest vs cost-optimal routing, SLA-based delivery tracking, demand forecasting at SKU level
