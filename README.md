@@ -11,7 +11,6 @@
 > **Version note:** The platform supports two pipeline configurations — **v1 (S3-only, 14 tasks, 9 Docker services)** for lightweight local development, and **v2 (Kafka + Spark + GX, 20 tasks, 14 Docker services)** for the full distributed stack. Both versions coexist in the codebase via comment toggles. The active configuration is v1; see the switching instructions in each file to enable v2.
 
 ---
-
 ## 🔍 Project Overview
 
 This platform is a **full end-to-end data engineering and analytics solution** built to simulate and optimize a distributed last-mile fulfillment network across 8 US warehouses and 500 products. It spans every layer of the modern data stack like synthetic data generation, cloud ingestion, warehouse transformation, machine learning, cost optimization, A/B experimentation, and business intelligence, all orchestrated through a production-grade Airflow pipeline.
