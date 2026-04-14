@@ -1,13 +1,13 @@
 # Daily Fulfillment Pipeline — replaces Airflow DAG
 # Lambda fires at 2:00 AM UTC via EventBridge → generates data → uploads to S3
-# This pipeline runs at 4:00 AM UTC (2 hours later) to process that data
-# 4:00 AM UTC = 12:00 AM ET / 11:00 PM CT
+# This pipeline runs at 2:00 PM UTC to process that data later in the morning ET
+# 2:00 PM UTC = 10:00 AM EDT / 9:00 AM EST
 
 name: Daily Pipeline
 
 on:
   schedule:
-    - cron: '0 4 * * *'
+    - cron: '0 14 * * *'
   workflow_dispatch:
     inputs:
       date:
