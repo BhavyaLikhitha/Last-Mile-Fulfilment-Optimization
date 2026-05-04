@@ -122,10 +122,10 @@ jobs:
       - name: Pipeline complete
         run: echo "FULFILLMENT PIPELINE COMPLETE — $(date -u) — date=${{ steps.date.outputs.ds }}"
 
-      # ── Update README "Last refreshed on" and commit as repo owner ─────
+      # ── Weekly: update README "Last refreshed on" every Sunday ────
       - name: Update README last-refreshed timestamp
         run: |
-          REFRESHED="$(date -u +%Y-%m-%d)"
+          [ "$(date -u +%u)" = "7" ] || exit 0
           python - <<'PY'
           import os, re, pathlib
           refreshed = os.environ["REFRESHED"]
@@ -145,12 +145,13 @@ jobs:
 
       - name: Commit README update
         run: |
+          [ "$(date -u +%u)" = "7" ] || exit 0
           git config user.name "Bhavyalikhitha"
           git config user.email "bhavyalikhitha.bbl@gmail.com"
           if git diff --quiet README.md; then
             echo "No README changes to commit."
           else
             git add README.md
-            git commit -m "docs: refresh README last-updated timestamp (${{ steps.date.outputs.ds }})"
+            git commit -m "docs: weekly README refresh (${{ steps.date.outputs.ds }})"
             git push origin HEAD:main
           fi
