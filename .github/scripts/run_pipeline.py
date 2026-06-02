@@ -16,6 +16,19 @@ import time
 
 import boto3
 import snowflake.connector
+from cryptography.hazmat.primitives.serialization import (
+    Encoding,
+    NoEncryption,
+    PrivateFormat,
+    load_pem_private_key,
+)
+
+
+def _load_private_key() -> bytes:
+    path = os.environ["SNOWFLAKE_PRIVATE_KEY_PATH"]
+    with open(path, "rb") as f:
+        key = load_pem_private_key(f.read(), password=None)
+    return key.private_bytes(Encoding.DER, PrivateFormat.PKCS8, NoEncryption())
 
 
 # ── Snowflake connection ─────────────────────────────────────
@@ -23,7 +36,7 @@ def get_conn():
     return snowflake.connector.connect(
         account=os.environ["SNOWFLAKE_ACCOUNT"],
         user=os.environ["SNOWFLAKE_USER"],
-        password=os.environ["SNOWFLAKE_PASSWORD"],
+        private_key=_load_private_key(),
         database=os.environ.get("SNOWFLAKE_DATABASE", "FULFILLMENT_DB"),
         warehouse=os.environ.get("SNOWFLAKE_WAREHOUSE", "FULFILLMENT_WH"),
     )

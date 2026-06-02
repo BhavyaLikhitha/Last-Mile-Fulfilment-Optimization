@@ -18,7 +18,7 @@ on:
 env:
   SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
   SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-  SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+  SNOWFLAKE_PRIVATE_KEY_PATH: /tmp/rsa_key.p8
   SNOWFLAKE_DATABASE: FULFILLMENT_DB
   SNOWFLAKE_WAREHOUSE: FULFILLMENT_WH
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -36,6 +36,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Write Snowflake private key
+        run: echo "${{ secrets.SNOWFLAKE_PRIVATE_KEY }}" > /tmp/rsa_key.p8
 
       - uses: actions/setup-python@v5
         with:
