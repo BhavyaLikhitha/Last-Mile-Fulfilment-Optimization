@@ -50,7 +50,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Write Snowflake private key
-        run: echo "${{ secrets.SNOWFLAKE_PRIVATE_KEY }}" > /tmp/rsa_key.p8
+        env:
+          SNOWFLAKE_PRIVATE_KEY_B64: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+        run: echo "$SNOWFLAKE_PRIVATE_KEY_B64" | base64 -d > /tmp/rsa_key.p8
 
       - uses: actions/setup-python@v5
         with:
