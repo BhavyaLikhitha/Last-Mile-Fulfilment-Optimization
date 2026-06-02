@@ -2,6 +2,12 @@
 
 import os
 
+from cryptography.hazmat.primitives.serialization import (
+    Encoding,
+    NoEncryption,
+    PrivateFormat,
+    load_pem_private_key,
+)
 from pyspark.sql import SparkSession
 
 SNOWFLAKE_SOURCE = "net.snowflake.spark.snowflake"
@@ -23,11 +29,20 @@ def create_spark_session(app_name: str = "fulfillment-features") -> SparkSession
     )
 
 
+def _load_spark_private_key() -> str:
+    path = os.getenv("SNOWFLAKE_PRIVATE_KEY_PATH")
+    with open(path, "rb") as f:
+        key = load_pem_private_key(f.read(), password=None)
+    pem = key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()).decode("utf-8")
+    return "".join(pem.splitlines()[1:-1])
+
+
 def snowflake_options(schema: str = "MARTS") -> dict:
     return {
         "sfURL": f"{os.getenv('SNOWFLAKE_ACCOUNT')}.snowflakecomputing.com",
         "sfUser": os.getenv("SNOWFLAKE_USER"),
-        "sfPassword": os.getenv("SNOWFLAKE_PASSWORD"),
+        "sfAuthenticator": "snowflake_jwt",
+        "sfPrivateKey": _load_spark_private_key(),
         "sfDatabase": os.getenv("SNOWFLAKE_DATABASE", "FULFILLMENT_DB"),
         "sfWarehouse": os.getenv("SNOWFLAKE_WAREHOUSE", "FULFILLMENT_WH"),
         "sfSchema": schema,

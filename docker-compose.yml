@@ -39,7 +39,7 @@ x-airflow-common: &airflow-common
     # Project environment variables passed from host .env
     SNOWFLAKE_ACCOUNT: ${SNOWFLAKE_ACCOUNT}
     SNOWFLAKE_USER: ${SNOWFLAKE_USER}
-    SNOWFLAKE_PASSWORD: ${SNOWFLAKE_PASSWORD}
+    SNOWFLAKE_PRIVATE_KEY_PATH: /run/secrets/rsa_key.p8
     SNOWFLAKE_DATABASE: ${SNOWFLAKE_DATABASE}
     SNOWFLAKE_WAREHOUSE: ${SNOWFLAKE_WAREHOUSE}
     AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
@@ -49,13 +49,14 @@ x-airflow-common: &airflow-common
     # v2: Uncomment for Kafka version
     # KAFKA_BOOTSTRAP_SERVERS: kafka:29092
     # Airflow connections via environment variables
-    AIRFLOW_CONN_SNOWFLAKE_DEFAULT: "snowflake://${SNOWFLAKE_USER}:${SNOWFLAKE_PASSWORD}@/${SNOWFLAKE_DATABASE}?account=${SNOWFLAKE_ACCOUNT}&warehouse=${SNOWFLAKE_WAREHOUSE}&role=ACCOUNTADMIN"
+    AIRFLOW_CONN_SNOWFLAKE_DEFAULT: "snowflake://${SNOWFLAKE_USER}@/${SNOWFLAKE_DATABASE}?account=${SNOWFLAKE_ACCOUNT}&warehouse=${SNOWFLAKE_WAREHOUSE}&role=ACCOUNTADMIN&private_key_path=/run/secrets/rsa_key.p8"
     AIRFLOW_CONN_AWS_DEFAULT: "aws://${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}@?region_name=${AWS_REGION}"
   volumes:
     - ./airflow/dags:/opt/airflow/dags
     - ./airflow/logs:/opt/airflow/logs
     - ./airflow/plugins:/opt/airflow/plugins
     - .:/opt/airflow/project
+    - C:\Users\bhavy\rsa_key.p8:/run/secrets/rsa_key.p8:ro
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on: &airflow-common-depends-on
     redis:

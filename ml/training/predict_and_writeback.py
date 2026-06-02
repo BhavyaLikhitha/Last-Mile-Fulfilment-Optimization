@@ -42,16 +42,27 @@ LOOKBACK_DAYS = 60
 
 
 def get_snowflake_connection():
-    """Create Snowflake connection from .env credentials."""
+    """Create Snowflake connection using RSA key-pair authentication."""
     import snowflake.connector
+    from cryptography.hazmat.primitives.serialization import (
+        Encoding,
+        NoEncryption,
+        PrivateFormat,
+        load_pem_private_key,
+    )
     from dotenv import load_dotenv
 
     load_dotenv()
 
+    path = os.getenv("SNOWFLAKE_PRIVATE_KEY_PATH")
+    with open(path, "rb") as f:
+        private_key = load_pem_private_key(f.read(), password=None)
+    pkb = private_key.private_bytes(Encoding.DER, PrivateFormat.PKCS8, NoEncryption())
+
     return snowflake.connector.connect(
         account=os.getenv("SNOWFLAKE_ACCOUNT"),
         user=os.getenv("SNOWFLAKE_USER"),
-        password=os.getenv("SNOWFLAKE_PASSWORD"),
+        private_key=pkb,
         database=os.getenv("SNOWFLAKE_DATABASE", "FULFILLMENT_DB"),
         warehouse=os.getenv("SNOWFLAKE_WAREHOUSE", "FULFILLMENT_WH"),
     )

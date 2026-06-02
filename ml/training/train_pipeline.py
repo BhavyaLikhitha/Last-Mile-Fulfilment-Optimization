@@ -69,10 +69,17 @@ from ml.models import stockout_risk as stockout_models
 
 #     load_dotenv()
 
+#     from cryptography.hazmat.primitives.serialization import (
+#         Encoding, NoEncryption, PrivateFormat, load_pem_private_key,
+#     )
+#     _path = os.getenv('SNOWFLAKE_PRIVATE_KEY_PATH')
+#     with open(_path, 'rb') as _f:
+#         _key = load_pem_private_key(_f.read(), password=None)
+#     _pkb = _key.private_bytes(Encoding.DER, PrivateFormat.PKCS8, NoEncryption())
 #     conn = snowflake.connector.connect(
 #         account=os.getenv('SNOWFLAKE_ACCOUNT'),
 #         user=os.getenv('SNOWFLAKE_USER'),
-#         password=os.getenv('SNOWFLAKE_PASSWORD'),
+#         private_key=_pkb,
 #         database=os.getenv('SNOWFLAKE_DATABASE', 'FULFILLMENT_DB'),
 #         warehouse=os.getenv('SNOWFLAKE_WAREHOUSE', 'FULFILLMENT_WH'),
 #     )

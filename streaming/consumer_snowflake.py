@@ -17,6 +17,12 @@ from collections import defaultdict
 import pandas as pd
 import snowflake.connector
 from confluent_kafka import Consumer
+from cryptography.hazmat.primitives.serialization import (
+    Encoding,
+    NoEncryption,
+    PrivateFormat,
+    load_pem_private_key,
+)
 
 from streaming.config import CONSUMER_CONFIG, TOPICS
 
@@ -27,11 +33,18 @@ TOPIC_TABLE_MAP = {
 }
 
 
+def _load_private_key() -> bytes:
+    path = os.getenv("SNOWFLAKE_PRIVATE_KEY_PATH")
+    with open(path, "rb") as f:
+        key = load_pem_private_key(f.read(), password=None)
+    return key.private_bytes(Encoding.DER, PrivateFormat.PKCS8, NoEncryption())
+
+
 def get_snowflake_connection():
     return snowflake.connector.connect(
         account=os.getenv("SNOWFLAKE_ACCOUNT"),
         user=os.getenv("SNOWFLAKE_USER"),
-        password=os.getenv("SNOWFLAKE_PASSWORD"),
+        private_key=_load_private_key(),
         database=os.getenv("SNOWFLAKE_DATABASE", "FULFILLMENT_DB"),
         warehouse=os.getenv("SNOWFLAKE_WAREHOUSE", "FULFILLMENT_WH"),
         schema="RAW",
