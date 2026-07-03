@@ -127,10 +127,10 @@ jobs:
       - name: Pipeline complete
         run: echo "FULFILLMENT PIPELINE COMPLETE — $(date -u) — date=${{ steps.date.outputs.ds }}"
 
-      # ── Weekly: update README "Last refreshed on" every Sunday ────
+      # ── Weekly: update README "Last refreshed on" every Tuesday ────
       - name: Update README last-refreshed timestamp
         run: |
-          [ "$(date -u +%u)" = "7" ] || exit 0
+          [ "$(date -u +%u)" = "2" ] || exit 0
           python - <<'PY'
           import os, re, pathlib
           refreshed = os.environ["REFRESHED"]
@@ -150,7 +150,7 @@ jobs:
 
       - name: Commit README update
         run: |
-          [ "$(date -u +%u)" = "7" ] || exit 0
+          [ "$(date -u +%u)" = "2" ] || exit 0
           git config user.name "Bhavyalikhitha"
           git config user.email "bhavyalikhitha.bbl@gmail.com"
           if git diff --quiet README.md; then
