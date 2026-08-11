@@ -5,7 +5,7 @@
 > *Simulating, engineering, optimizing, and visualizing a distributed fulfillment network at scale — from raw data generation to production-grade BI and ML.*
 
 <!-- LAST_REFRESHED_START -->
-*Last refreshed on: 2026-08-04*
+*Last refreshed on: 2026-08-11*
 <!-- LAST_REFRESHED_END -->
 
 > **Version note:** The platform supports two pipeline configurations — **v1 (S3-only, 14 tasks, 9 Docker services)** for lightweight local development, and **v2 (Kafka + Spark + GX, 20 tasks, 14 Docker services)** for the full distributed stack. Both versions coexist in the codebase via comment toggles. The active configuration is v1; see the switching instructions in each file to enable v2.
