@@ -5,9 +5,10 @@
 
 name: Daily Pipeline
 
+# Schedule paused 2026-10-13 — data frozen as of this date. Run manually via workflow_dispatch.
 on:
-  schedule:
-    - cron: '0 14 * * *'
+  # schedule:
+  #   - cron: '0 14 * * *'
   workflow_dispatch:
     inputs:
       date:
@@ -27,7 +28,7 @@ env:
   S3_BUCKET_NAME: last-mile-fulfillment-platform
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   pipeline:
@@ -126,37 +127,3 @@ jobs:
 
       - name: Pipeline complete
         run: echo "FULFILLMENT PIPELINE COMPLETE — $(date -u) — date=${{ steps.date.outputs.ds }}"
-
-      # ── Weekly: update README "Last refreshed on" every Tuesday ────
-      - name: Update README last-refreshed timestamp
-        run: |
-          [ "$(date -u +%u)" = "2" ] || exit 0
-          python - <<'PY'
-          import os, re, pathlib
-          refreshed = os.environ["REFRESHED"]
-          p = pathlib.Path("README.md")
-          text = p.read_text(encoding="utf-8")
-          new_block = f"<!-- LAST_REFRESHED_START -->\n*Last refreshed on: {refreshed}*\n<!-- LAST_REFRESHED_END -->"
-          updated = re.sub(
-              r"<!-- LAST_REFRESHED_START -->.*?<!-- LAST_REFRESHED_END -->",
-              new_block,
-              text,
-              flags=re.DOTALL,
-          )
-          p.write_text(updated, encoding="utf-8")
-          PY
-        env:
-          REFRESHED: ${{ steps.date.outputs.ds }}
-
-      - name: Commit README update
-        run: |
-          [ "$(date -u +%u)" = "2" ] || exit 0
-          git config user.name "Bhavyalikhitha"
-          git config user.email "bhavyalikhitha.bbl@gmail.com"
-          if git diff --quiet README.md; then
-            echo "No README changes to commit."
-          else
-            git add README.md
-            git commit -m "docs: weekly README refresh (${{ steps.date.outputs.ds }})"
-            git push origin HEAD:main
-          fi
